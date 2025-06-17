@@ -173,5 +173,3 @@ export { activeMidiNotes, MIDI_CHANNEL };
 
 // No direct DOM manipulation or event listeners for DOM elements here.
 // That will be handled by ui.js, which will call these exported functions.
-
-console.log("midi.js loaded");

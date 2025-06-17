@@ -205,8 +205,6 @@ export function initUI(mainCanvasElement, callbacksObj) {
     // Initial load of pulse mode setting (main11.js will handle the actual state)
     // const savedPulseMode = _loadSetting(LS_KEYS.PULSE_MODE, false);
     // if (savedPulseMode) coreCallbacks.onTogglePulseMode(); // Request main to toggle if saved as true
-
-    console.log("ui.js initialized");
 }
 
 export function resizeCanvas(targetCanvas) {
@@ -257,5 +255,3 @@ export function loadPulseModeSetting(defaultValue) {
 
 // No direct key listeners here, main.js will handle them and call appropriate functions
 // e.g., coreCallbacks.onMidiToggle() which would be connected to toggleMidiEnabled in midi.js
-
-console.log("ui.js loaded");

@@ -188,7 +188,6 @@ export function initHandDetection(videoEl, canvasEl, callbacksObj) {
         width: 640, // Default, can be overridden by videoEl properties if needed
         height: 480
     });
-    console.log("handDetection.js initialized");
 }
 
 export function startHandDetection() {
@@ -208,5 +207,3 @@ export function stopHandDetection() {
     // For now, this function is a placeholder.
     console.log("stopHandDetection called - camera stop might need to be handled by managing video stream.");
 }
-
-console.log("handDetection.js loaded");

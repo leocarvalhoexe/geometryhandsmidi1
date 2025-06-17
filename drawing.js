@@ -16,7 +16,6 @@ export function initDrawing(mainCanvas) {
         mainCanvasWidth = mainCanvas.width;
         mainCanvasHeight = mainCanvas.height;
     }
-    console.log("drawing.js initialized");
 }
 
 // --- Canvas Operations ---
@@ -194,5 +193,3 @@ export function drawToPopup(popupCtx, mainCanvasElement, popupCanvas) {
         // console.log("drawToPopup called - currently a no-op as popup draws its own shape.");
     }
 }
-
-console.log("drawing.js loaded");
