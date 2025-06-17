@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Circle and Shape Manipulation</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #111; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <button id="info" style="position: absolute; top: 10px; left: 10px; z-index: 100;">ℹ️ Info</button>
+  <div id="infoModal" style="display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background-color: #333; color: #fff; padding: 20px; border-radius: 10px; width: 80%; max-width: 500px; position: relative;">
+      <span id="closeModal" style="position: absolute; top: 10px; right: 15px; font-size: 20px; cursor: pointer;">&times;</span>
+      <h3>Instruções de Uso</h3>
+      <p>- Redimensionamento: Distância entre os polegares das duas mãos (outros dedos fechados).</p>
+      <p>- Mão esquerda (pinça): Controla o número de lados da forma (quando polegares não estão redimensionando).</p>
+      <p>- Mão direita (dedos próximos à borda): Distorce o contorno (quando polegares não estão redimensionando).</p>
+      <p>- Teclas "+" e "-" também aumentam ou diminuem o tamanho.</p>
+    </div>
+  </div>
+  <video id="video" style="display:none;" playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+  <script>
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('canvas');
+    const ctx = canvasElement.getContext('2d');
+
+    function resizeCanvas() {
+      canvasElement.width = window.innerWidth;
+      canvasElement.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    let circleRadius = 100;
+    let shapeSides = 100; // 100 = círculo
+    let scaleX = 1;
+    let scaleY = 1;
+    let rightHandLandmarks = null; // For liquify effect
+    const centerX = () => canvasElement.width / 2;
+    const centerY = () => canvasElement.height / 2;
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
+
+    hands.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await hands.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '+') {
+        circleRadius = Math.min(circleRadius + 10, 300);
+      }
+      if (e.key === '-') {
+        circleRadius = Math.max(circleRadius - 10, 30);
+      }
+    });
+
+    const infoButton = document.getElementById('info');
+    const infoModal = document.getElementById('infoModal');
+    const closeModalButton = document.getElementById('closeModal');
+
+    infoButton.addEventListener('click', () => {
+      infoModal.style.display = 'flex'; // Use flex for centering
+    });
+
+    closeModalButton.addEventListener('click', () => {
+      infoModal.style.display = 'none';
+    });
+
+    // Optional: Close modal if user clicks outside of it
+    window.addEventListener('click', (event) => {
+      if (event.target === infoModal) {
+        infoModal.style.display = 'none';
+      }
+    });
+
+    const drawLandmarks = (landmarks) => {
+      const connections = [
+        [0,1],[1,2],[2,3],[3,4],
+        [0,5],[5,6],[6,7],[7,8],
+        [5,9],[9,10],[10,11],[11,12],
+        [9,13],[13,14],[14,15],[15,16],
+        [13,17],[17,18],[18,19],[19,20],
+        [0,17]
+      ];
+      ctx.strokeStyle = 'lime';
+      ctx.lineWidth = 2;
+      for (const [a, b] of connections) {
+        const x1 = canvasElement.width - (landmarks[a].x * canvasElement.width);
+        const y1 = landmarks[a].y * canvasElement.height;
+        const x2 = canvasElement.width - (landmarks[b].x * canvasElement.width);
+        const y2 = landmarks[b].y * canvasElement.height;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+    };
+
+    function distance(x1, y1, x2, y2) {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function isTouchingCircle(x, y, cx, cy, r, tolerance = 20) {
+      const d = distance(x, y, cx, cy);
+      return Math.abs(d - r) <= tolerance;
+    }
+
+    function drawShape(cx, cy, radius, sides) {
+      ctx.beginPath();
+      const maxInfluenceDistance = 150; // px
+      const maxForce = 25; // px, adjust for desired strength
+      const fingertipsToUse = [4, 8, 12, 16, 20]; // Thumb, Index, Middle, Ring, Pinky
+
+      for (let i = 0; i < sides; i++) {
+        const angle = (i / sides) * Math.PI * 2;
+        let vertexX_orig = radius * Math.cos(angle);
+        let vertexY_orig = radius * Math.sin(angle);
+
+        // Liquify effect
+        let totalDisplacementX = 0;
+        let totalDisplacementY = 0;
+
+        if (rightHandLandmarks) {
+          const currentVertexCanvasX = cx + vertexX_orig;
+          const currentVertexCanvasY = cy + vertexY_orig;
+
+          for (const landmarkIndex of fingertipsToUse) {
+            const fingertip = rightHandLandmarks[landmarkIndex];
+            const fingertipX = canvasElement.width - (fingertip.x * canvasElement.width); // Invert X
+            const fingertipY = fingertip.y * canvasElement.height;
+
+            const distToFingertip = distance(currentVertexCanvasX, currentVertexCanvasY, fingertipX, fingertipY);
+
+            if (distToFingertip < maxInfluenceDistance && distToFingertip > 0) {
+              const vecX = currentVertexCanvasX - fingertipX;
+              const vecY = currentVertexCanvasY - fingertipY;
+
+              const normVecX = vecX / distToFingertip;
+              const normVecY = vecY / distToFingertip;
+
+              const forceMagnitude = maxForce * (1 - distToFingertip / maxInfluenceDistance);
+
+              totalDisplacementX += normVecX * forceMagnitude;
+              totalDisplacementY += normVecY * forceMagnitude;
+            }
+          }
+        }
+
+        let deformedX = vertexX_orig + totalDisplacementX;
+        let deformedY = vertexY_orig + totalDisplacementY;
+
+        // Apply scaling AFTER deformation
+        const finalX = cx + deformedX;
+        const finalY = cy + deformedY;
+
+        if (i === 0) ctx.moveTo(finalX, finalY);
+        else ctx.lineTo(finalX, finalY);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = 'cyan';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+
+    function onResults(results) {
+      ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+      const cx = centerX();
+      const cy = centerY();
+      let isThumbResizing = false;
+
+      // Reset rightHandLandmarks before processing results
+      rightHandLandmarks = null;
+
+      // Two-thumb resizing logic
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length == 2) {
+        let leftHandLandmarks = null;
+        let rightHandLandmarksLocal = null; // Use a local var to avoid conflict with global one for liquify
+
+        if (results.multiHandedness[0].label === "Left") {
+          leftHandLandmarks = results.multiHandLandmarks[0];
+          rightHandLandmarksLocal = results.multiHandLandmarks[1];
+        } else {
+          leftHandLandmarks = results.multiHandLandmarks[1];
+          rightHandLandmarksLocal = results.multiHandLandmarks[0];
+        }
+
+        const isThumbUp = (landmarks, handednessLabel) => {
+          if (!landmarks) return false;
+          // Check Y coordinates: Tip above PIP, PIP above MCP (lower Y is higher on screen)
+          const thumbIsOpen = landmarks[4].y < landmarks[3].y && landmarks[3].y < landmarks[2].y;
+          // Check X coordinates for thumb extension.
+          // For Right hand, thumb tip (4) should be to the left (smaller X) of thumb MCP (2).
+          // For Left hand, thumb tip (4) should be to the right (larger X) of thumb MCP (2).
+          // This assumes raw landmark data where X is 0 (left) to 1 (right).
+          const thumbExtended = (handednessLabel === "Right" && landmarks[4].x < landmarks[2].x) ||
+                                (handednessLabel === "Left" && landmarks[4].x > landmarks[2].x);
+
+          const fingersCurled =
+            landmarks[8].y > landmarks[6].y && // Index
+            landmarks[12].y > landmarks[10].y && // Middle
+            landmarks[16].y > landmarks[14].y && // Ring
+            landmarks[20].y > landmarks[18].y; // Pinky
+          return thumbIsOpen && thumbExtended && fingersCurled;
+        };
+
+        if (isThumbUp(leftHandLandmarks, "Left") && isThumbUp(rightHandLandmarksLocal, "Right")) {
+          isThumbResizing = true;
+          const leftThumbTip = leftHandLandmarks[4];
+          const rightThumbTip = rightHandLandmarksLocal[4];
+
+          // Calculate pixel coordinates for thumb tips
+          // Note: X is inverted for right hand landmarks in current drawing logic, but raw landmarks are not.
+          // We use canvasElement.width - x for display, so for calculations with raw landmarks,
+          // left hand x will be smaller than right hand x when hands are apart.
+          const leftThumbX = leftThumbTip.x * canvasElement.width;
+          const leftThumbY = leftThumbTip.y * canvasElement.height;
+          const rightThumbX = rightThumbTip.x * canvasElement.width;
+          const rightThumbY = rightThumbTip.y * canvasElement.height;
+
+          const thumbDistancePixels = distance(leftThumbX, leftThumbY, rightThumbX, rightThumbY);
+
+          const minThumbDist = canvasElement.width * 0.05; // 5% of canvas width
+          const maxThumbDist = canvasElement.width * 0.5; // 50% of canvas width
+
+          const normalizedThumbDist = Math.max(0, Math.min(1, (thumbDistancePixels - minThumbDist) / (maxThumbDist - minThumbDist)));
+          circleRadius = 30 + normalizedThumbDist * 270; // Maps to 30-300
+        }
+      }
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+          const landmarks = results.multiHandLandmarks[i];
+          const handedness = results.multiHandedness[i].label; // "Left" ou "Right"
+
+          if (!isThumbResizing && handedness === "Right") {
+            rightHandLandmarks = landmarks; // Used for liquify
+          }
+
+          drawLandmarks(landmarks); // Desenha esqueleto
+
+          const indexTip = landmarks[8];
+          const thumbTip = landmarks[4];
+
+          const ix = canvasElement.width - (indexTip.x * canvasElement.width);
+          const iy = indexTip.y * canvasElement.height;
+          const tx = canvasElement.width - (thumbTip.x * canvasElement.width);
+          const ty = thumbTip.y * canvasElement.height;
+
+          const pinchDistance = distance(ix, iy, tx, ty);
+          const pinchX = (ix + tx) / 2;
+          const pinchY = (iy + ty) / 2;
+
+          // Mão direita controla o RAIO se a pinça estiver tocando o contorno
+          if (!isThumbResizing && handedness === "Right") {
+            // The pinchDistance and related calculations are for the old radius logic.
+            // We can keep it if there's no conflict, or decide if liquify replaces it.
+            // For now, let's assume the pinch for radius change is still desired.
+            // DELETED RIGHT HAND PINCH FOR RADIUS
+          }
+
+          // Mão esquerda controla a FORMA se a pinça estiver tocando o contorno
+          // E também a distorção radial
+          if (!isThumbResizing && handedness === "Left") {
+            // DELETED SCALE X AND Y LOGIC
+            if (isTouchingCircle(pinchX, pinchY, cx, cy, circleRadius)) {
+              // Mapeia distância da pinça para número de lados (3 a 100)
+              const newSides = Math.round(Math.min(Math.max((pinchDistance - 10) / 5 + 3, 3), 100));
+              shapeSides = newSides;
+            }
+          }
+        }
+      }
+      if (isThumbResizing) {
+        rightHandLandmarks = null; // Ensure liquify is off
+      }
+      // Desenha a forma (círculo ou polígono) - Moved after landmark processing
+      drawShape(cx, cy, circleRadius, shapeSides);
+    }
+  </script>
+</body>
+</html>
