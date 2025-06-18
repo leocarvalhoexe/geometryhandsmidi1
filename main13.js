@@ -6,6 +6,9 @@ const DEFAULT_SIDES = 100;
 let circleRadius = DEFAULT_RADIUS;
 let shapeSides = DEFAULT_SIDES;
 
+let handsCanvas;
+let handsCtx;
+
 let rightHandLandmarks = null;
 let pulseModeActive = false;
 let pulseTime = 0;
@@ -533,6 +536,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Assign DOM elements
     videoElement = document.getElementById('video');
     canvasElement = document.getElementById('canvas');
+    // Initialize handsCanvas and handsCtx
+    if (canvasElement) {
+        handsCanvas = document.createElement('canvas');
+        handsCtx = handsCanvas.getContext('2d');
+        handsCanvas.width = canvasElement.width; // Initial size sync
+        handsCanvas.height = canvasElement.height; // Initial size sync
+    }
+
     infoButton = document.getElementById('info'); // Added declaration
     closeModalButton = document.getElementById('closeModal'); // Added declaration
     settingsButton = document.getElementById('settingsButton');
@@ -970,6 +981,13 @@ function resizeCanvas() {
     // Update cW, cH after resize for other functions that might use them
     cW = canvasElement.width;
     cH = canvasElement.height;
+
+    // Resize handsCanvas as well
+    if (handsCanvas) {
+        handsCanvas.width = canvasElement.width;
+        handsCanvas.height = canvasElement.height;
+    }
+
     // If shapes positions or sizes are relative to canvas, they might need updates here
     // For example, if shapes should always be centered:
     // if (selectedShape && !performanceModeActive) { // single shape mode
