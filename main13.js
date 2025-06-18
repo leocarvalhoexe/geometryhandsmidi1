@@ -215,7 +215,7 @@ function initShapes() {
 }
 
 function drawShape(shape, currentPulsedRadius, isPulsingActive, pulseCycleValue, currentDemoAngle, isDemoDistortingFlag) {
-  if (!ctx) return;
+  if (!renderCtx) return;
   ctx.beginPath();
   const currentDisplaySides = Math.round(Math.max(MIN_SIDES, Math.min(MAX_SIDES, shape.sides)));
   const shapeCenterX = shape.x;
@@ -516,9 +516,13 @@ function onResults(results) {
           popupCanvas.width = outputPopupWindow.innerWidth;
           popupCanvas.height = outputPopupWindow.innerHeight;
         }
-        popupCanvasCtx.fillStyle = 'rgba(0,0,0,0.1)'; // Or clear if no fade desired in popup
+        // NEW LOGIC: Clear with solid background, no drawImage
+        popupCanvasCtx.fillStyle = '#111';
         popupCanvasCtx.fillRect(0, 0, popupCanvas.width, popupCanvas.height);
-        popupCanvasCtx.drawImage(canvasElement, 0, 0, popupCanvas.width, popupCanvas.height);
+
+        // TODO: Future steps will add logic here to iterate through shapes
+        // and call a modified drawShape(popupCanvasCtx, ...) for each shape.
+        // For now, the popup will just be a solid dark color.
       }
     } catch (e) {
       // outputPopupWindow might have been closed by user, leading to security error
