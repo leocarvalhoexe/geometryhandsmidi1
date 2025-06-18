@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Circle and Shape Manipulation with MIDI</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+    canvas { display: block; }
+    #info, #settingsButton, #openOutputPopupButton, #midiToggleButton { position: absolute; top: 10px; z-index: 100; padding: 10px; background-color: #444; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+    #info { left: 10px; }
+    #settingsButton { left: 150px; }
+    #openOutputPopupButton { left: 320px; } /* Adjusted left position */
+    #midiToggleButton { left: 510px; } /* Positioned after Open Output Popup button */
+    #infoModal, #settingsModal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-content { background-color: #333; color: #fff; padding: 30px; border-radius: 10px; width: 80%; max-width: 600px; position: relative; max-height: 80vh; overflow-y: auto; }
+    .modal-content h3 { margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 10px; }
+    .modal-content p, .modal-content ul { line-height: 1.6; }
+    .modal-content ul { padding-left: 20px; }
+    .modal-content a { color: #00bcd4; text-decoration: none; }
+    .modal-content a:hover { text-decoration: underline; }
+    #closeModal, #closeSettingsModal { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: #aaa; }
+    #closeModal:hover, #closeSettingsModal:hover { color: #fff; }
+    .modal-footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #555; text-align: center; font-size: 0.9em; }
+    /* Styles for the MIDI output select and its label */
+    .modal-content label[for="midiOutputSelect"] { display: block; margin-bottom: 5px; color: #ccc; /* Lighter color for label text */ }
+    #midiOutputSelect { width: 100%; padding: 8px; margin-top: 10px; border-radius: 4px; border: 1px solid #555; background-color: #222; color: white; font-size: 1em; }
+
+    #hud {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background-color: rgba(0, 0, 0, 0.5);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 14px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <button id="info">ℹ️ Manual</button>
+  <button id="settingsButton">⚙️ Configurações</button>
+  <button id="openOutputPopupButton">↗️ Abrir Janela de Saída</button>
+  <button id="midiToggleButton">🎹 MIDI ON</button>
+
+  <div id="infoModal">
+    <div class="modal-content">
+      <span id="closeModal">&times;</span>
+      <h3>Manual do Usuário</h3>
+
+      <h4>Explicação Geral do Projeto</h4>
+      <p>Este projeto permite a manipulação de formas geométricas interativas através dos movimentos das mãos (capturados pela webcam) e integra essas interações com a geração de música em tempo real via MIDI.</p>
+
+      <h4>Integração MIDI</h4>
+      <p>O sistema utiliza a API Web MIDI do navegador para enviar mensagens MIDI para um dispositivo ou porta MIDI virtual (como LoopMIDI no Windows ou IAC Driver no Mac).</p>
+      <ul>
+        <li>Cada aresta da forma geométrica corresponde a uma nota MIDI.</li>
+        <li>O número de lados da forma determina a quantidade de notas tocadas.</li>
+        <li>As notas são mapeadas para uma escala harmônica (pentatônica).</li>
+        <li>O tamanho da forma (raio) controla a intensidade (velocity) das notas: formas maiores produzem notas mais fortes.</li>
+        <li>A distorção das arestas (efeito "liquify") afeta o pitch bend de cada nota: quanto mais deformada, maior a variação no tom.</li>
+        <li>As notas são geradas em loop enquanto a forma estiver visível.</li>
+      </ul>
+
+      <h4>Manipulação da Forma com as Mãos</h4>
+      <ul>
+        <li><strong>Redimensionamento do Raio:</strong> Use os polegares das duas mãos. Aproxime ou afaste os polegares (com os outros dedos fechados) para diminuir ou aumentar o tamanho da forma.</li>
+        <li><strong>Número de Lados:</strong> Com a mão esquerda, faça um gesto de pinça (polegar e indicador). A distância entre os dedos da pinça, quando próxima à borda da forma, altera o número de lados (de um triângulo até um círculo). Este controle funciona quando o redimensionamento com os dois polegares não está ativo.</li>
+        <li><strong>Distorção (Liquify):</strong> Com a mão direita, aproxime os dedos da borda da forma para distorcer o contorno. Este controle funciona quando o redimensionamento com os dois polegares não está ativo.</li>
+      </ul>
+
+      <h4>Teclas de Atalho</h4>
+      <ul>
+        <li><strong>M:</strong> Ativa ou desativa o envio de mensagens MIDI.</li>
+        <li><strong>+ (sinal de mais):</strong> Aumenta o raio da forma.</li>
+        <li><strong>- (sinal de menos):</strong> Diminui o raio da forma.</li>
+        <li><em>(Opcional: Funcionalidade de transposição geral pode ser adicionada no futuro)</em></li>
+      </ul>
+
+      <div class="modal-footer">
+        <p>© Leonardo Carvalho — 2025</p>
+        <p><a href="https://www.instagram.com/leocarvalho.exe?igsh=MXg5bHN0Zm12YnhocA==" target="_blank">@leocarvalho.exe</a></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsModal">
+    <div class="modal-content">
+      <span id="closeSettingsModal">&times;</span>
+      <h3>Configurações MIDI</h3>
+      <label for="midiOutputSelect">Porta de Saída MIDI:</label>
+      <select id="midiOutputSelect">
+        <!-- Options will be populated by JavaScript -->
+      </select>
+      <!-- Add more settings here if needed in the future -->
+       <div class="modal-footer">
+        <p>As configurações são aplicadas em tempo real.</p>
+      </div>
+    </div>
+  </div>
+
+  <video id="video" style="display:none;" playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="main19.js" defer></script>
+  <div id="hud"></div>
+</body>
+</html>
