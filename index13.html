@@ -107,6 +107,15 @@
           <!-- Add more scales here if needed -->
         </select>
       </div>
+      <div class="setting-item">
+        <label for="continuousMidiToggle">Modo Contínuo MIDI:</label>
+        <input type="checkbox" id="continuousMidiToggle">
+      </div>
+
+      <div class="setting-item">
+        <label for="continuousMidiIntervalInput">Intervalo Contínuo (ms):</label>
+        <input type="number" id="continuousMidiIntervalInput" value="500" min="50" style="width: 80px;">
+      </div>
 
       <button id="resetMidiButton">Resetar Notas MIDI</button>
 

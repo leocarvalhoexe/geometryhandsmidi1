@@ -72,7 +72,7 @@ let outputPopupWindow = null;
 let popupCanvasCtx = null;
 
 // Global references to DOM elements - will be assigned in DOMContentLoaded
-let videoElement, canvasElement, ctx, mouseSimToggle, resetMidiButton, shapeSidesInput, musicalScaleSelect, resetShapeButton, settingsButton, settingsModal, closeSettingsModalButton, midiOutputSelect, openOutputPopupButton, infoButton, closeModalButton;
+let videoElement, canvasElement, ctx, mouseSimToggle, resetMidiButton, shapeSidesInput, musicalScaleSelect, resetShapeButton, settingsButton, settingsModal, closeSettingsModalButton, midiOutputSelect, openOutputPopupButton, infoButton, closeModalButton, continuousMidiToggleEl, continuousMidiIntervalInputEl;
 let camera; // Camera instance
 let cW, cH; // canvas width and height
 let centerX, centerY; // functions to get canvas center
@@ -193,7 +193,7 @@ const drawLandmarks = (landmarks) => {
     ctx.beginPath();
     ctx.moveTo(x1,y1);
     ctx.lineTo(x2,y2);
-    ctx.stroke();
+    // ctx.stroke();
   }
 };
 function distance(x1,y1,x2,y2){const dx=x2-x1,dy=y2-y1;return Math.sqrt(dx*dx+dy*dy);}
@@ -214,9 +214,9 @@ function initShapes() {
     console.log("Shapes initialized, selected shape:", selectedShape);
 }
 
-function drawShape(shape, currentPulsedRadius, isPulsingActive, pulseCycleValue, currentDemoAngle, isDemoDistortingFlag) {
-  if (!ctx) return;
-  ctx.beginPath();
+function drawShape(targetCtx, shape, currentPulsedRadius, isPulsingActive, pulseCycleValue, currentDemoAngle, isDemoDistortingFlag) {
+  if (!targetCtx) return;
+  targetCtx.beginPath();
   const currentDisplaySides = Math.round(Math.max(MIN_SIDES, Math.min(MAX_SIDES, shape.sides)));
   const shapeCenterX = shape.x;
   const shapeCenterY = shape.y;
@@ -335,25 +335,44 @@ function drawShape(shape, currentPulsedRadius, isPulsingActive, pulseCycleValue,
   }
 
   // After drawing all vertices, manage notes that are no longer part of the shape
-  if (Object.keys(shape.activeNotes).length > 0) {
+  if (shape.activeNotes && Object.keys(shape.activeNotes).length > 0) { // Added shape.activeNotes check
+    const isShapeControlledByContinuousMIDI = continuousMidiModeActive && selectedShape && shape.id === selectedShape.id && selectedShape.sides > 0;
+
     if (midiEnabled && currentDisplaySides > 0) {
         Object.keys(shape.activeNotes).forEach(indexString => {
             const indexNum = Number(indexString);
-            if (shape.activeNotes[indexNum] && shape.activeNotes[indexNum].playing) {
-                if (indexNum >= currentDisplaySides) { // This edge no longer exists
-                    sendMidiNoteOff(shape.activeNotes[indexNum].note, shape.midiChannel);
-                    shape.activeNotes[indexNum].playing = false; // Mark as not playing
+            const noteInfo = shape.activeNotes[indexNum];
+            if (noteInfo && noteInfo.playing) {
+                // If this edge no longer exists AND this note is not under continuous mode's control for this shape (i.e., not marked 'continuous')
+                if (indexNum >= currentDisplaySides && !(isShapeControlledByContinuousMIDI && noteInfo.continuous)) {
+                    sendMidiNoteOff(noteInfo.note, shape.midiChannel);
+                    noteInfo.playing = false; // Mark as not playing
                 }
             }
         });
         // Clean up notes marked as not playing
         Object.keys(shape.activeNotes).forEach(indexString => {
-            if (shape.activeNotes[indexString] && !shape.activeNotes[indexString].playing) {
-                delete shape.activeNotes[indexString];
+            const indexNum = Number(indexString);
+            const noteInfo = shape.activeNotes[indexNum];
+            // Only delete if not playing AND ( (it's not the shape controlled by continuous MIDI) OR (it is that shape BUT the note is not a continuous note) )
+            if (noteInfo && !noteInfo.playing && !(isShapeControlledByContinuousMIDI && noteInfo.continuous)) {
+                 delete shape.activeNotes[indexNum];
             }
         });
-    } else if (!midiEnabled || currentDisplaySides === 0) { // If MIDI disabled or shape has no sides, turn off all its notes
-        turnOffAllActiveNotesForShape(shape);
+    } else if (!midiEnabled || currentDisplaySides === 0) {
+        // If MIDI is globally disabled or the shape effectively has no sides.
+        let clearNotes = true;
+        if (isShapeControlledByContinuousMIDI) {
+            // If this shape is the one continuous MIDI is playing,
+            // only clear its notes if MIDI just got disabled or sides became zero,
+            // because continuous mode itself won't be able to send noteOffs.
+            if (midiEnabled && currentDisplaySides > 0){
+                clearNotes = false; // Continuous mode is active and can manage its notes.
+            }
+        }
+        if(clearNotes){
+            turnOffAllActiveNotesForShape(shape); // This function clears all of shape.activeNotes
+        }
     }
   }
 
@@ -469,6 +488,11 @@ function onResults(results) {
                         });
                         midiEnabled = origMidi; // Restore previous state
                     }
+                if (continuousMidiModeActive && selectedShape) {
+                    turnOffAllActiveNotesForShape(selectedShape);
+                    currentContinuousMidiEdgeIndex = 0;
+                    lastContinuousMidiTriggerTime = performance.now();
+                }
                 }
             }
         }
@@ -510,20 +534,72 @@ function onResults(results) {
   // If output popup window is open, draw main canvas to it
   if (outputPopupWindow && !outputPopupWindow.closed && popupCanvasCtx) {
     try {
-      const popupCanvas = outputPopupWindow.document.getElementById('popupCanvas');
-      if (popupCanvas) {
-        if (popupCanvas.width !== outputPopupWindow.innerWidth || popupCanvas.height !== outputPopupWindow.innerHeight) {
-          popupCanvas.width = outputPopupWindow.innerWidth;
-          popupCanvas.height = outputPopupWindow.innerHeight;
+        const popupCanvas = outputPopupWindow.document.getElementById('popupCanvas');
+        if (popupCanvas && popupCanvasCtx) {
+            // Ensure popup canvas element size is synchronized with its window
+            if (popupCanvas.width !== outputPopupWindow.innerWidth || popupCanvas.height !== outputPopupWindow.innerHeight) {
+                popupCanvas.width = outputPopupWindow.innerWidth;
+                popupCanvas.height = outputPopupWindow.innerHeight;
+            }
+
+            // Clear popup canvas with a solid background
+            popupCanvasCtx.fillStyle = '#111'; // Solid background for clean output
+            popupCanvasCtx.fillRect(0, 0, popupCanvas.width, popupCanvas.height);
+
+            // --- Aspect Ratio Correction ---
+            // Calculate scale to fit main canvas content (cW, cH) into popupCanvas respecting aspect ratio
+            const scale = Math.min(popupCanvas.width / cW, popupCanvas.height / cH);
+            // Calculate offsets to center the scaled content
+            const offsetX = (popupCanvas.width - cW * scale) / 2;
+            const offsetY = (popupCanvas.height - cH * scale) / 2;
+
+            popupCanvasCtx.save(); // Save current state (identity matrix)
+            popupCanvasCtx.translate(offsetX, offsetY); // Move origin to where scaled content should start
+            popupCanvasCtx.scale(scale, scale);     // Apply uniform scale
+
+            // --- Draw Shapes (Scaled and Translated) ---
+            // Store and temporarily modify global states that might affect drawing or cause side effects
+            const originalRightHandLandmarks = rightHandLandmarks;
+            const originalMidiEnabled = midiEnabled;
+
+            rightHandLandmarks = null; // Disable hand liquify for popup
+            midiEnabled = false;       // Disable MIDI output for popup rendering pass
+
+            // Recalculate pulse parameters as they are used by drawShape
+            let currentOverallPulseActiveForPopup = pulseModeActive || (demoModeActive && demoIsPulsing);
+            let actualPulseCycleValueForPopup = 0;
+            if (currentOverallPulseActiveForPopup) {
+                actualPulseCycleValueForPopup = Math.sin(pulseTime * pulseFrequency * 2 * Math.PI);
+            }
+            // demoAngle is global and used by drawShape
+
+            for (const shape of shapes) {
+                let radiusToDraw = shape.radius;
+                let isShapePulsingForPopup = currentOverallPulseActiveForPopup && shape.isSelected;
+                if (demoModeActive && demoIsPulsing && shape.isSelected) isShapePulsingForPopup = true;
+
+                if (isShapePulsingForPopup) {
+                    let pulseRadiusModifierFactor = 0.25 * actualPulseCycleValueForPopup;
+                    radiusToDraw = shape.radius * (1 + pulseRadiusModifierFactor);
+                    radiusToDraw = Math.max(10, radiusToDraw);
+                }
+
+                // drawShape will now render into the transformed (scaled & translated) popupCanvasCtx.
+                // Its internal coordinates are still based on the main canvas logic (e.g. shape.x, shape.y, radiusToDraw).
+                drawShape(popupCanvasCtx, shape, radiusToDraw, isShapePulsingForPopup, actualPulseCycleValueForPopup, demoAngle, demoIsDistorting && shape.isSelected);
+            }
+
+            // Restore global states
+            rightHandLandmarks = originalRightHandLandmarks;
+            midiEnabled = originalMidiEnabled;
+
+            popupCanvasCtx.restore(); // Restore context to pre-transform state
+            // --- End Aspect Ratio Correction ---
         }
-        popupCanvasCtx.fillStyle = 'rgba(0,0,0,0.1)'; // Or clear if no fade desired in popup
-        popupCanvasCtx.fillRect(0, 0, popupCanvas.width, popupCanvas.height);
-        popupCanvasCtx.drawImage(canvasElement, 0, 0, popupCanvas.width, popupCanvas.height);
-      }
-    } catch (e) {
-      // outputPopupWindow might have been closed by user, leading to security error
-      // console.warn("Error updating popup window:", e);
-      // Consider nullifying outputPopupWindow and popupCanvasCtx here if error persists
+    } catch (e) { // Catch block should be preserved as is
+        console.warn("Error updating popup window:", e);
+        // outputPopupWindow = null; // Example cleanup
+        // popupCanvasCtx = null;  // Example cleanup
     }
   }
 }
@@ -655,6 +731,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     midiEnabled = origMidi;
                 }
+                    if (continuousMidiModeActive && selectedShape) {
+                        turnOffAllActiveNotesForShape(selectedShape);
+                        currentContinuousMidiEdgeIndex = 0;
+                        lastContinuousMidiTriggerTime = performance.now();
+                    }
             }
             lastMouseX = currentMouseX;
             lastMouseY = currentMouseY;
@@ -754,6 +835,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 shapeSidesInput.value = newSides; // Update input field to clamped value
                 console.log(`Shape ${selectedShape.id} sides changed to:`, newSides);
+                if (continuousMidiModeActive && selectedShape) {
+                    turnOffAllActiveNotesForShape(selectedShape);
+                    currentContinuousMidiEdgeIndex = 0;
+                    lastContinuousMidiTriggerTime = performance.now();
+                }
             }
         });
     }
@@ -856,6 +942,54 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     } else {
         console.error("Open Output Popup Button not found.");
+    }
+
+    continuousMidiToggleEl = document.getElementById('continuousMidiToggle');
+    continuousMidiIntervalInputEl = document.getElementById('continuousMidiIntervalInput');
+
+    if (continuousMidiToggleEl) {
+        continuousMidiToggleEl.checked = continuousMidiModeActive; // Initialize checkbox state
+        continuousMidiToggleEl.addEventListener('change', () => {
+            continuousMidiModeActive = continuousMidiToggleEl.checked;
+            if (continuousMidiModeActive) {
+                // Mode activated
+                if (selectedShape) { // Ensure a shape is selected to start the mode
+                    turnOffAllActiveNotesForShape(selectedShape); // Clear any previous notes
+                    currentContinuousMidiEdgeIndex = 0;
+                    lastContinuousMidiTriggerTime = performance.now(); // Start clock
+                    console.log("Continuous MIDI Mode ACTIVATED");
+                } else {
+                    // No shape selected, can't activate effectively
+                    continuousMidiModeActive = false;
+                    continuousMidiToggleEl.checked = false;
+                    console.log("Continuous MIDI Mode: No shape selected, cannot activate.");
+                }
+            } else {
+                // Mode deactivated
+                if (selectedShape) {
+                    turnOffAllActiveNotesForShape(selectedShape); // Turn off notes played by continuous mode
+                }
+                console.log("Continuous MIDI Mode DEACTIVATED");
+            }
+        });
+    }
+
+    if (continuousMidiIntervalInputEl) {
+        continuousMidiIntervalInputEl.value = continuousMidiInterval; // Initialize input state
+        continuousMidiIntervalInputEl.addEventListener('change', () => {
+            let newInterval = parseInt(continuousMidiIntervalInputEl.value, 10);
+            if (isNaN(newInterval) || newInterval < 50) { // Enforce minimum interval
+                newInterval = 50;
+                continuousMidiIntervalInputEl.value = newInterval;
+            }
+            continuousMidiInterval = newInterval;
+            console.log("Continuous MIDI Interval changed to:", continuousMidiInterval);
+            // Optional: Reset clock immediately if it's active, to use new interval from next note
+            if (continuousMidiModeActive && selectedShape) {
+                lastContinuousMidiTriggerTime = performance.now();
+                // currentContinuousMidiEdgeIndex could also be reset if desired, but just resetting time is usually enough
+            }
+        });
     }
 
     // Global event listeners (can be outside specific element checks if general)
