@@ -167,24 +167,35 @@ midiOutputSelect.addEventListener('change', () => {
 });
 
 function sendMidiNoteOn(note, velocity, channel = MIDI_CHANNEL) {
-  if (midiOutput && midiEnabled) {
-    const noteOnMessage = [0x90 + channel, note, velocity];
+  if (midiOutput && typeof midiOutput.send === 'function' && midiEnabled) {
+    const currentChannel = Math.max(0, Math.min(15, channel)); // Clamp channel to 0-15
+    const validNote = Math.max(0, Math.min(127, Math.round(note))); // Clamp note to 0-127 and ensure integer
+    const validVelocity = Math.max(0, Math.min(127, Math.round(velocity))); // Clamp velocity to 0-127 and ensure integer
+
+    const noteOnMessage = [0x90 + currentChannel, validNote, validVelocity];
     midiOutput.send(noteOnMessage);
   }
 }
 
 function sendMidiNoteOff(note, channel = MIDI_CHANNEL) {
-  if (midiOutput && midiEnabled) {
-    const noteOffMessage = [0x80 + channel, note, 0];
+  if (midiOutput && typeof midiOutput.send === 'function' && midiEnabled) {
+    const currentChannel = Math.max(0, Math.min(15, channel));
+    const validNote = Math.max(0, Math.min(127, Math.round(note)));
+
+    const noteOffMessage = [0x80 + currentChannel, validNote, 0]; // Velocity for note off is typically 0
     midiOutput.send(noteOffMessage);
   }
 }
 
 function sendPitchBend(bendValue, channel = MIDI_CHANNEL) {
-  if (midiOutput && midiEnabled) {
-    const lsb = bendValue & 0x7F;
-    const msb = (bendValue >> 7) & 0x7F;
-    const pitchBendMessage = [0xE0 + channel, lsb, msb];
+  if (midiOutput && typeof midiOutput.send === 'function' && midiEnabled) {
+    const currentChannel = Math.max(0, Math.min(15, channel));
+    // Pitch bend value is 14-bit (0-16383). 8192 is center.
+    const validBendValue = Math.max(0, Math.min(16383, Math.round(bendValue)));
+
+    const lsb = validBendValue & 0x7F;
+    const msb = (validBendValue >> 7) & 0x7F;
+    const pitchBendMessage = [0xE0 + currentChannel, lsb, msb];
     midiOutput.send(pitchBendMessage);
   }
 }
