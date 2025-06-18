@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Circle and Shape Manipulation with MIDI</title>
+  <style>
+    /* mantém os estilos existentes normalmente */
+  </style>
+</head>
+<body>
+  <!-- mesmos botões, modais e canvas do index15.html -->
+
+  <div id="midi-scale-selector"> <button id="scale-pentatonic">Pentatonic</button> <button id="scale-major">Major</button> <button id="scale-harmonic-minor">Harmonic Minor</button> </div>
+  <video id="video" style="display:none;" playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <!-- MediaPipe e scripts principais -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script type="module" src="./main16.js"></script>
+</body>
+</html>
