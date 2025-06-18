@@ -495,7 +495,7 @@ function drawShape(cx, cy, radius, sides, isPulsing, pulseValue) {
 }
 
 function onResults(results) {
-  console.log("onResults called - v18 debug", results);
+  console.log("onResults called - v18 debug", results); // Retaining this console log from main19 for consistency
   // Safeguard: If MIDI has been globally disabled (e.g. by 'M' key) and notes are still cached as active, clear them.
   if (!midiEnabled && Object.keys(activeMidiNotes).length > 0) {
     turnOffAllActiveNotes();
@@ -509,12 +509,14 @@ function onResults(results) {
   const cy = centerY();
   let isThumbResizing = false;
 
-  rightHandLandmarks = null;
+  rightHandLandmarks = null; // Reset right hand landmarks for liquify
 
+  // Two-hand detection for radius resizing (from main19.js)
   if (results.multiHandLandmarks && results.multiHandLandmarks.length == 2) {
     let leftHandLandmarks = null;
-    let rightHandLandmarksLocal = null;
+    let rightHandLandmarksLocal = null; // Local variable for right hand in two-hand context
 
+    // Determine left and right hands based on MediaPipe labels
     if (results.multiHandedness[0].label === "Left") {
       leftHandLandmarks = results.multiHandLandmarks[0];
       rightHandLandmarksLocal = results.multiHandLandmarks[1];
@@ -523,6 +525,7 @@ function onResults(results) {
       rightHandLandmarksLocal = results.multiHandLandmarks[0];
     }
 
+    // Thumb-based resizing logic (from main19.js)
     const isThumbUp = (landmarks, handednessLabel) => {
       if (!landmarks) return false;
       const thumbIsOpen = landmarks[4].y < landmarks[3].y && landmarks[3].y < landmarks[2].y;
@@ -540,97 +543,107 @@ function onResults(results) {
       isThumbResizing = true;
       const leftThumbTip = leftHandLandmarks[4];
       const rightThumbTip = rightHandLandmarksLocal[4];
+      // Calculate distance between thumbs to control circleRadius
       const leftThumbX = leftThumbTip.x * canvasElement.width;
       const leftThumbY = leftThumbTip.y * canvasElement.height;
       const rightThumbX = rightThumbTip.x * canvasElement.width;
       const rightThumbY = rightThumbTip.y * canvasElement.height;
       const thumbDistancePixels = distance(leftThumbX, leftThumbY, rightThumbX, rightThumbY);
-      const minThumbDist = canvasElement.width * 0.05;
-      const maxThumbDist = canvasElement.width * 0.5;
+      const minThumbDist = canvasElement.width * 0.05; // Example minimum distance
+      const maxThumbDist = canvasElement.width * 0.5; // Example maximum distance
       const normalizedThumbDist = Math.max(0, Math.min(1, (thumbDistancePixels - minThumbDist) / (maxThumbDist - minThumbDist)));
-      circleRadius = 30 + normalizedThumbDist * 270;
+      circleRadius = 30 + normalizedThumbDist * 270; // Map normalized distance to radius range (30-300)
     }
   }
 
+  // Process single or multiple hands for other interactions (sides, liquify, pulse amplitude)
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     for (let i = 0; i < results.multiHandLandmarks.length; i++) {
       const landmarks = results.multiHandLandmarks[i];
       const handedness = results.multiHandedness[i].label;
 
+      // Right hand for liquify (if not thumb resizing)
       if (!isThumbResizing && handedness === "Right") {
-        rightHandLandmarks = landmarks;
+        rightHandLandmarks = landmarks; // Used by drawShape for liquify
       }
 
+      // Draw landmarks for all detected hands
       drawLandmarks(landmarks);
 
-      const indexTip = landmarks[8];
-      const thumbTip = landmarks[4];
-      const ix = canvasElement.width - (indexTip.x * canvasElement.width);
-      const iy = indexTip.y * canvasElement.height;
-      const tx = canvasElement.width - (thumbTip.x * canvasElement.width);
-      const ty = thumbTip.y * canvasElement.height;
-      const pinchDistance = distance(ix, iy, tx, ty);
-      const pinchX = (ix + tx) / 2;
-      const pinchY = (iy + ty) / 2;
+      // Left hand for pinch control (number of sides) and pulse amplitude
+      if (handedness === "Left") {
+        // Pinch control for number of sides (if not thumb resizing)
+        if (!isThumbResizing) {
+          const indexTip = landmarks[8];
+          const thumbTip = landmarks[4];
+          const ix = canvasElement.width - (indexTip.x * canvasElement.width); // Mirrored X
+          const iy = indexTip.y * canvasElement.height;
+          const tx = canvasElement.width - (thumbTip.x * canvasElement.width); // Mirrored X
+          const ty = thumbTip.y * canvasElement.height;
+          const pinchDistance = distance(ix, iy, tx, ty);
+          const pinchX = (ix + tx) / 2;
+          const pinchY = (iy + ty) / 2;
 
-      if (!isThumbResizing && handedness === "Left") {
-        if (isTouchingCircle(pinchX, pinchY, cx, cy, circleRadius)) {
-          const newSides = Math.round(Math.min(Math.max((pinchDistance - 10) / 5 + 3, 3), 100));
-          if (newSides !== shapeSides) {
-            const currentTime = performance.now();
-            if (currentTime - lastSideChangeTime > SIDE_CHANGE_DEBOUNCE_MS) {
-              if (newSides < shapeSides && midiEnabled) {
-                for (let k = newSides; k < shapeSides; k++) {
-                  if (activeMidiNotes[k] && activeMidiNotes[k].playing) {
-                    sendMidiNoteOff(activeMidiNotes[k].note, activeMidiNotes[k].channel);
-                    // activeMidiNotes[k].playing will be set to false or deleted by the common cleanup logic
+          if (isTouchingCircle(pinchX, pinchY, cx, cy, circleRadius)) {
+            const newSides = Math.round(Math.min(Math.max((pinchDistance - 10) / 5 + 3, 3), 100));
+            if (newSides !== shapeSides) {
+              const currentTime = performance.now();
+              if (currentTime - lastSideChangeTime > SIDE_CHANGE_DEBOUNCE_MS) {
+                // Turn off notes for sides that are removed
+                if (newSides < shapeSides && midiEnabled) {
+                  for (let k = newSides; k < shapeSides; k++) {
+                    if (activeMidiNotes[k] && activeMidiNotes[k].playing) {
+                      sendMidiNoteOff(activeMidiNotes[k].note, activeMidiNotes[k].channel);
+                      if (staccatoTimers[k]) { // Clear staccato timer if exists
+                        clearTimeout(staccatoTimers[k]);
+                        delete staccatoTimers[k];
+                      }
+                      activeMidiNotes[k].playing = false;
+                    }
                   }
                 }
+                shapeSides = newSides;
+                lastSideChangeTime = currentTime;
               }
-              shapeSides = newSides;
-              lastSideChangeTime = currentTime;
-              // updateHUD() is called at the end of onResults, which is generally preferred.
             }
           }
+        }
+
+        // Pulse amplitude control with left hand (from main21.js logic)
+        if (pulseModeActive) { // Only if pulse mode is on
+            let leftHandPalmY = Math.max(0, Math.min(1, landmarks[0].y)); // Use landmark 0 (wrist)
+            pulseAmplitudeFactor = 1.0 - leftHandPalmY; // Higher hand (lower Y) = higher factor
+            pulseAmplitudeFactor = Math.max(0.05, Math.min(1.0, pulseAmplitudeFactor)); // Clamp to 0.05-1.0
         }
       }
     }
   }
+
+  // If thumb resizing was active, ensure right hand is not used for liquify in this frame
   if (isThumbResizing) {
     rightHandLandmarks = null;
   }
 
-  if (pulseModeActive && results.multiHandLandmarks) {
-    let leftHandPalmY = null;
-    for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-      const handedness = results.multiHandedness[i].label;
-      const landmarks = results.multiHandLandmarks[i]; // Get landmarks for current hand
-      if (handedness === "Left") {
-        leftHandPalmY = Math.max(0, Math.min(1, landmarks[0].y)); // Use landmark 0 (wrist)
-        pulseAmplitudeFactor = 1.0 - leftHandPalmY; // Higher hand (lower Y) = higher factor
-        pulseAmplitudeFactor = Math.max(0.05, Math.min(1.0, pulseAmplitudeFactor)); // Clamp to 0.05-1.0
-        // console.log("Left hand Y: " + landmarks[0].y + ", Amplitude Factor: " + pulseAmplitudeFactor);
-        break;
-      }
-    }
-    // If left hand not detected, could reset to default or keep last value
-    // For now, it keeps the last value if left hand disappears while pulse mode is active.
-  }
-  let currentRadiusForShape = circleRadius; // Default to original circleRadius
-  let currentPulseValue = 0; // For velocity modulation, default to no pulse effect
+  // Pulse logic (combining main19 and main21 logic)
+  let currentRadiusForShape = circleRadius;
+  let currentPulseValue = 0;
 
   if (pulseModeActive) {
       pulseTime = performance.now() * 0.001;
-      currentPulseValue = Math.sin(pulseTime * pulseFrequency * 2 * Math.PI); // Sin wave from -1 to 1
+      currentPulseValue = Math.sin(pulseTime * pulseFrequency * 2 * Math.PI); // Raw sine wave (-1 to 1)
 
+      // Radius modulation uses pulseAmplitudeFactor (from main21.js logic)
       let radiusModulationDepth = 0.25 * pulseAmplitudeFactor;
-      let actualRadiusModulation = radiusModulationDepth * currentPulseValue; // currentPulseValue is the raw sine
+      let actualRadiusModulation = radiusModulationDepth * currentPulseValue;
       currentRadiusForShape = circleRadius * (1 + actualRadiusModulation);
-      currentRadiusForShape = Math.max(10, currentRadiusForShape); // Minimum radius of 10
+      currentRadiusForShape = Math.max(10, currentRadiusForShape); // Ensure minimum radius
   }
-  drawShape(cx, cy, currentRadiusForShape, shapeSides, pulseModeActive, currentPulseValue);
-  updateHUD(); // Update HUD at the end of onResults
 
+  // Call drawShape with potentially modified radius and pulse value
+  drawShape(cx, cy, currentRadiusForShape, shapeSides, pulseModeActive, currentPulseValue);
+  updateHUD(); // Update HUD at the end
+
+  // Mirror to popup window if open
   if (outputPopupWindow && !outputPopupWindow.closed && popupCanvasCtx) {
     try {
       const popupCanvas = outputPopupWindow.document.getElementById('popupCanvas');
@@ -639,15 +652,12 @@ function onResults(results) {
             popupCanvas.width = outputPopupWindow.innerWidth;
             popupCanvas.height = outputPopupWindow.innerHeight;
         }
-
-        // Clear popup canvas with afterimage effect
-        popupCanvasCtx.fillStyle = 'rgba(0, 0, 0, 0.1)'; // Use the same alpha
+        popupCanvasCtx.fillStyle = 'rgba(0, 0, 0, 0.1)';
         popupCanvasCtx.fillRect(0, 0, popupCanvas.width, popupCanvas.height);
-
         popupCanvasCtx.drawImage(canvasElement, 0, 0, popupCanvas.width, popupCanvas.height);
       }
     } catch (e) {
-        // console.warn("Error drawing to popup:", e.message);
+      // console.warn("Error drawing to popup:", e.message);
     }
   }
 }
