@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Circle and Shape Manipulation with MIDI</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+    canvas { display: block; }
+    #info, #settingsButton, #openOutputPopupButton, #midiToggleButton { position: absolute; top: 10px; z-index: 100; padding: 10px; background-color: #444; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+    #info { left: 10px; }
+    #settingsButton { left: 150px; }
+    #openOutputPopupButton { left: 320px; } /* Adjusted left position */
+    #midiToggleButton { left: 510px; } /* Positioned after Open Output Popup button */
+    #infoModal, #settingsModal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-content { background-color: #333; color: #fff; padding: 30px; border-radius: 10px; width: 80%; max-width: 600px; position: relative; max-height: 80vh; overflow-y: auto; }
+    .modal-content h3 { margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 10px; }
+    .modal-content p, .modal-content ul { line-height: 1.6; }
+    .modal-content ul { padding-left: 20px; }
+    .modal-content a { color: #00bcd4; text-decoration: none; }
+    .modal-content a:hover { text-decoration: underline; }
+    #closeModal, #closeSettingsModal { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: #aaa; }
+    #closeModal:hover, #closeSettingsModal:hover { color: #fff; }
+    .modal-footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #555; text-align: center; font-size: 0.9em; }
+    /* Styles for the MIDI output select and its label */
+    .modal-content label { display: block; margin-bottom: 5px; color: #ccc; /* Lighter color for label text */ }
+    .modal-content select, .modal-content input[type="text"], .modal-content input[type="number"] { width: 100%; padding: 8px; margin-top: 5px; margin-bottom:15px; border-radius: 4px; border: 1px solid #555; background-color: #222; color: white; font-size: 1em; box-sizing: border-box; }
+
+
+    #hud {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background-color: rgba(0, 0, 0, 0.5);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 14px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <button id="info">ℹ️ Manual</button>
+  <button id="settingsButton">⚙️ Configurações</button>
+  <button id="openOutputPopupButton">↗️ Abrir Janela de Saída</button>
+  <button id="midiToggleButton">🎹 MIDI ON</button>
+
+  <div id="infoModal">
+    <div class="modal-content">
+      <span id="closeModal">&times;</span>
+      <h3>Manual do Usuário (v21)</h3>
+
+      <h4>Explicação Geral do Projeto</h4>
+      <p>Este projeto permite a manipulação de formas geométricas interativas através dos movimentos das mãos (capturados pela webcam) e integra essas interações com a geração de música em tempo real via MIDI e exportação de dados via OSC.</p>
+
+      <h4>Integração MIDI</h4>
+      <ul>
+        <li>As formas geométricas disparam notas MIDI ao abrir ou fechar a mão (transição de estado).</li>
+        <li>Cada aresta da forma geométrica pode corresponder a uma nota MIDI (funcionalidade de loop de notas por aresta mantida, mas o trigger principal é a transição de mão).</li>
+        <li>O número de lados da forma determina a quantidade de notas tocadas em modos específicos.</li>
+        <li>As notas são mapeadas para uma escala harmônica (pentatônica).</li>
+        <li>O tamanho da forma (raio) controla a intensidade (velocity) das notas.</li>
+        <li>A distorção "vortex" (ativada pelo gesto "hang loose") controla o pitch bend.</li>
+        <li>A distorção "liquify" (dedos da mão direita) também afeta o pitch bend.</li>
+      </ul>
+
+      <h4>Manipulação da Forma com as Mãos (Hierarquia de Gestos)</h4>
+      <ol>
+        <li><strong>Redimensionamento do Raio:</strong> Ambas as mãos fechadas, aproximar/afastar polegares para aumentar/diminuir o raio da forma. (Prioridade Máxima)</li>
+        <li><strong>Gesto "Hang Loose" (Mão Esquerda):</strong> Polegar e mínimo estendidos, demais dedos recolhidos. Ativa o modo "vortex" (distorção de arestas) e controla o pitch bend MIDI com a intensidade do gesto.</li>
+        <li><strong>Pinça (Mão Esquerda):</strong> Polegar e indicador. Controla o número de lados da forma.</li>
+        <li><strong>Distorção "Liquify" (Mão Direita):</strong> Dedos próximos à borda distorcem o contorno.</li>
+        <li><strong>Disparo MIDI por Transição:</strong> Abrir ou fechar a mão (qualquer uma associada à forma) dispara uma nota MIDI.</li>
+      </ol>
+
+      <h4>Exportação OSC (Open Sound Control)</h4>
+      <p>Os seguintes parâmetros são enviados em tempo real via OSC (padrão: porta 9000):</p>
+      <ul>
+        <li><code>/shape/[id]/sides</code>: Número de lados.</li>
+        <li><code>/shape/[id]/radius</code>: Raio.</li>
+        <li><code>/shape/[id]/vortexIntensity</code>: Intensidade da distorção vortex.</li>
+        <li><code>/shape/[id]/posX</code>: Posição X da forma.</li>
+        <li><code>/shape/[id]/posY</code>: Posição Y da forma.</li>
+        <li><code>/shape/[id]/pitchBend</code>: Pitch bend atual.</li>
+        <li><code>/shape/[id]/leftHandOpen</code>: Estado da mão esquerda (0 ou 1).</li>
+        <li><code>/shape/[id]/rightHandOpen</code>: Estado da mão direita (0 ou 1).</li>
+      </ul>
+      <p>Configure o IP e a porta de destino nas Configurações.</p>
+
+
+      <h4>Teclas de Atalho</h4>
+      <ul>
+        <li><strong>M:</strong> Ativa ou desativa o envio de mensagens MIDI.</li>
+        <li><strong>+ (sinal de mais):</strong> Aumenta o raio da forma (afeta a primeira forma se nenhuma estiver sob controle direto).</li>
+        <li><strong>- (sinal de menos):</strong> Diminui o raio da forma (afeta a primeira forma se nenhuma estiver sob controle direto).</li>
+         <li><strong>P:</strong> Ativa/desativa modo de pulso global (afeta visual e velocity MIDI).</li>
+      </ul>
+
+      <div class="modal-footer">
+        <p>© Leonardo Carvalho — 2025</p>
+        <p><a href="https://www.instagram.com/leocarvalho.exe?igsh=MXg5bHN0Zm12YnhocA==" target="_blank">@leocarvalho.exe</a></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsModal">
+    <div class="modal-content">
+      <span id="closeSettingsModal">&times;</span>
+      <h3>Configurações (v21)</h3>
+
+      <h4>MIDI</h4>
+      <label for="midiOutputSelect">Porta de Saída MIDI:</label>
+      <select id="midiOutputSelect">
+        <!-- Options will be populated by JavaScript -->
+      </select>
+
+      <h4>OSC (Open Sound Control)</h4>
+      <label for="oscServerIp">IP do Servidor OSC:</label>
+      <input type="text" id="oscServerIp" value="127.0.0.1">
+
+      <label for="oscServerPort">Porta do Servidor OSC:</label>
+      <input type="number" id="oscServerPort" value="9000">
+
+      <label for="oscSendInterval">Intervalo de Envio OSC (ms):</label>
+      <input type="number" id="oscSendInterval" value="100" min="10">
+
+
+       <div class="modal-footer">
+        <p>As configurações são aplicadas em tempo real (exceto IP/Porta OSC que podem requerer reinício da conexão implícita).</p>
+      </div>
+    </div>
+  </div>
+
+  <video id="video" style="display:none;" playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <!-- Potential OSC library, if needed and allowed by sandbox. For now, will try without. -->
+  <!-- <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js"></script> -->
+  <script src="main21.js" defer></script>
+  <div id="hud"></div>
+</body>
+</html>
