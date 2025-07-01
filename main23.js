@@ -1129,8 +1129,9 @@ function updateHUD() {
         // /forma/X/direction (sentido de execução atual: 1 ou -1)
         osc.send(new OSC.Message(`/forma/${shapeId}/direction`, parseInt(shape.rotationDirection)));
       });
-    }
-  }
+    } // Fechamento do if (osc && osc.status() === OSC.STATUS.IS_OPEN)
+  } // Fechamento do if (hudElement)
+} // Fechamento da função updateHUD()
 }
 
 function updateMidiButtonText() {
