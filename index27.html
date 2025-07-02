@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MIDI Shape Manipulator v27</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+    canvas { display: block; }
+    #info, #settingsButton, #openOutputPopupButton, #midiToggleButton, #operationModeButton { position: absolute; top: 10px; z-index: 100; padding: 10px; background-color: #444; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+    #info { left: 10px; }
+    #settingsButton { left: 150px; }
+    #openOutputPopupButton { left: 320px; }
+    #midiToggleButton { left: 510px; }
+    #operationModeButton { left: 670px; } /* Positioned after MIDI Toggle button */
+    #infoModal, #settingsModal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-content { background-color: #333; color: #fff; padding: 30px; border-radius: 10px; width: 80%; max-width: 600px; position: relative; max-height: 80vh; overflow-y: auto; }
+    .modal-content h3 { margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 10px; }
+    .modal-content p, .modal-content ul { line-height: 1.6; }
+    .modal-content ul { padding-left: 20px; }
+    .modal-content a { color: #00bcd4; text-decoration: none; }
+    .modal-content a:hover { text-decoration: underline; }
+    #closeModal, #closeSettingsModal { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: #aaa; }
+    #closeModal:hover, #closeSettingsModal:hover { color: #fff; }
+    .modal-footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #555; text-align: center; font-size: 0.9em; }
+    /* Styles for the MIDI output select and its label */
+    .modal-content label[for="midiOutputSelect"] { display: block; margin-bottom: 5px; color: #ccc; /* Lighter color for label text */ }
+    #midiOutputSelect { width: 100%; padding: 8px; margin-top: 10px; border-radius: 4px; border: 1px solid #555; background-color: #222; color: white; font-size: 1em; }
+
+    #hud {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background-color: rgba(0, 0, 0, 0.5);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 14px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <button id="info">ℹ️ Manual</button>
+  <button id="settingsButton">⚙️ Configurações</button>
+  <button id="openOutputPopupButton">↗️ Abrir Janela de Saída</button>
+  <button id="midiToggleButton">🎹 MIDI ON</button>
+  <button id="operationModeButton">👤 Modo: 2 Pessoas</button>
+
+  <div id="infoModal">
+    <div class="modal-content">
+      <span id="closeModal">&times;</span>
+      <h3>Manual do Usuário - v27</h3>
+
+      <h4>Explicação Geral do Projeto</h4>
+      <p>Este projeto (v27) permite a manipulação de <strong>duas formas geométricas independentes</strong> e interativas através dos movimentos das mãos (capturados pela webcam, suportando uma ou duas pessoas). Integra essas interações com a geração de música em tempo real via MIDI e envia dados via OSC para aplicações externas como o TouchDesigner (usando o script `osc_relay.py`).</p>
+      <p><strong>Novidades v27:</strong> Modos de acorde aprimorados (Tríade ou Todos os Vértices), limite de polifonia, controle de modo de acorde via tecla 'C' e OSC, comunicação OSC via WebSocket para `osc_relay.py`, e comportamento atualizado do modo "1 Pessoa".</p>
+
+      <h4>Integração MIDI e Acordes</h4>
+      <p>O sistema utiliza a API Web MIDI do navegador. Cada forma possui seu próprio canal MIDI.</p>
+      <ul>
+        <li>Notas geradas sequencialmente (ou outros modos) com direção reversível.</li>
+        <li>Número de lados da forma influencia a sequência/acorde.</li>
+        <li>Notas mapeadas para escalas harmônicas (tecla 'S').</li>
+        <li>Tamanho da forma (raio) controla a intensidade (velocity).</li>
+        <li><strong>Acordes ao Redimensionar:</strong>
+          <ul>
+            <li>Quando uma forma é redimensionada significativamente (gesto de polegares).</li>
+            <li><strong>Modo de Acorde (tecla 'C' para alternar):</strong>
+              <ul>
+                <li><strong>TRIAD:</strong> Toca um acorde de três notas (fundamental, terça, quinta da nota base da forma na escala atual).</li>
+                <li><strong>VERTEX_ALL:</strong> Toca todas as notas correspondentes aos vértices da forma simultaneamente, como um acorde polifônico (Ex: forma de 7 lados toca 7 notas). Limitado por `maxPolyphony` (atualmente 12 notas).</li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+        <li>Distorção da forma afeta o pitch bend.</li>
+        <li>Modos Legato/Staccato (tecla 'L') e Pulso (tecla 'P').</li>
+      </ul>
+
+      <h4>Comunicação OSC</h4>
+      <p>O sistema envia mensagens OSC via WebSocket para o endereço `ws://localhost:8080`. É compatível com o script Python `osc_relay.py` que traduz estas mensagens para UDP, permitindo a integração com softwares como o TouchDesigner (porta UDP padrão 5005).</p>
+      <p>Principais mensagens OSC enviadas:</p>
+      <ul>
+        <li>`/forma/[id]/noteOn <nota> <velocidade> <canal>`</li>
+        <li>`/forma/[id]/noteOff <nota> <canal>`</li>
+        <li>`/forma/[id]/chord <nota1> <nota2> ...` (Envia todas as notas do acorde tocado)</li>
+        <li>`/forma/[id]/sides <quantidade>`</li>
+        <li>`/forma/[id]/radius <raio>`</li>
+        <li>`/forma/[id]/pos <x_norm> <y_norm>`</li>
+        <li>`/forma/[id]/distortion <distorcao_norm>`</li>
+        <li>... e outros parâmetros de forma e globais.</li>
+      </ul>
+      <p>Controle via OSC recebido:</p>
+      <ul>
+        <li>`/global/setChordMode "TRIAD"` ou `/global/setChordMode "VERTEX_ALL"`</li>
+        <li>... e outros controles para raio, lados, modos globais, etc.</li>
+      </ul>
+
+
+      <h4>Manipulação das Formas com as Mãos</h4>
+      <p>O sistema pode operar em modo de <strong>1 Pessoa</strong> ou <strong>2 Pessoas</strong> (selecionável via botão "Modo" ou OSC).</p>
+      <ul>
+        <li><strong>Modo 1 Pessoa (Atualizado):</strong> A pessoa controla apenas a Forma 1. A Forma 2 permanece visível mas inativa em termos de controle por gestos e não gera MIDI a partir de interações manuais.</li>
+        <li><strong>Modo 2 Pessoas:</strong> Cada pessoa controla uma forma (Forma 1 pela primeira pessoa detectada, Forma 2 pela segunda).</li>
+      </ul>
+      <p>Gestos de controle (para a forma ativa):</p>
+      <ul>
+        <li><strong>Redimensionamento do Raio & Acorde:</strong> Polegares das duas mãos. Dispara acorde.</li>
+        <li><strong>Número de Lados:</strong> Pinça com mão esquerda.</li>
+        <li><strong>Distorção (Liquify):</strong> Mão direita próxima à borda.</li>
+        <li><strong>Puxar Vértices (tecla 'V'):</strong> Dedo indicador da mão direita.</li>
+      </ul>
+
+      <h4>Teclas de Atalho</h4>
+      <ul>
+        <li><strong>M:</strong> Ativa/Desativa MIDI global.</li>
+        <li><strong>P:</strong> Ativa/Desativa Modo Pulso global.</li>
+        <li><strong>L:</strong> Alterna Staccato/Legato.</li>
+        <li><strong>V:</strong> Ativa/Desativa modo "Puxar Vértices".</li>
+        <li><strong>S:</strong> Cicla escalas musicais.</li>
+        <li><strong>N:</strong> Cicla modos de geração de nota (Sequencial, Arpejo, etc.).</li>
+        <li><strong>C:</strong> Alterna Modo de Acorde (TRIAD / VERTEX_ALL).</li>
+        <li><strong>Botão "Modo":</strong> Alterna operação 1 Pessoa / 2 Pessoas.</li>
+      </ul>
+
+      <div class="modal-footer">
+        <p>© Leonardo Carvalho — 2025</p>
+        <p><a href="https://www.instagram.com/leocarvalho.exe?igsh=MXg5bHN0Zm12YnhocA==" target="_blank">@leocarvalho.exe</a></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsModal">
+    <div class="modal-content">
+      <span id="closeSettingsModal">&times;</span>
+      <h3>Configurações MIDI</h3>
+      <label for="midiOutputSelect">Porta de Saída MIDI:</label>
+      <select id="midiOutputSelect">
+        <!-- Options will be populated by JavaScript -->
+      </select>
+      <!-- Add more settings here if needed in the future -->
+       <div class="modal-footer">
+        <p>As configurações são aplicadas em tempo real.</p>
+      </div>
+    </div>
+  </div>
+
+  <video id="video" style="display:none;" playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js"></script>
+  <script src="main27.js" defer></script>
+  <div id="hud"></div>
+</body>
+</html>
