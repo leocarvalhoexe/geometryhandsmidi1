@@ -30,9 +30,9 @@ async def send_to_websockets(message_payload_json_str):
 # Handler para mensagens OSC recebidas via UDP
 def udp_message_handler(address, *args):
     """Lida com mensagens OSC recebidas via UDP e as encaminha para o WebSocket."""
-    print(f"UDP OSC Recebido: {address} {args}")
+    print(f"[UDP IN] Recebido de {UDP_LISTEN_IP}:{UDP_LISTEN_PORT} - Addr: {address}, Args: {args}")
     # Prepara a mensagem para ser enviada via WebSocket
-    # O formato deve ser algo que o main30.js possa entender,
+    # O formato deve ser algo que o main31.js possa entender,
     # por exemplo, um JSON similar ao que ele mesmo envia.
     # Aqui, vamos simplesmente encaminhar o endereço e os argumentos.
     # O cliente JS precisará ser ajustado para lidar com esses formatos.
@@ -52,14 +52,15 @@ def udp_message_handler(address, *args):
 
 async def websocket_handler(websocket, path):
     """Lida com conexões WebSocket do navegador."""
-    print(f"WebSocket conectado: {websocket.remote_address}")
+    client_address = websocket.remote_address
+    print(f"[WebSocket CONNECT] Cliente conectado: {client_address}")
     active_websockets.add(websocket)
     try:
-        async for message in websocket: # Alterado de message_str para message
+        async for message in websocket:
             try:
                 # VERIFICA SE A MENSAGEM É BINÁRIA OU TEXTO (JSON)
                 if isinstance(message, bytes):
-                    print(f"Ignorado pacote binário via WebSocket: {message}")
+                    print(f"[WebSocket IN] Pacote binário ignorado de {client_address}: {message[:60]}...") # Log truncado
                     # Aqui você pode decidir se quer tentar processar a mensagem binária OSC
                     # ou simplesmente ignorá-la. Por enquanto, ignorando.
                     # Se fosse processar:
@@ -83,29 +84,38 @@ async def websocket_handler(websocket, path):
 
 
                 if address:
-                    print(f"WS Recebido de {websocket.remote_address}: {address} {args}")
+                    # Log detalhado da mensagem recebida do WebSocket
+                    print(f"[WebSocket IN] De {websocket.remote_address} - Addr: {address}, Args: {args}")
 
                     # 1. Envia a mensagem OSC via UDP para o TD_IP:TD_PORT
-                    osc_udp_client.send_message(address, args)
+                    try:
+                        osc_udp_client.send_message(address, args)
+                        # Log de sucesso do envio UDP
+                        print(f"[UDP OUT] Enviado para {TD_IP}:{TD_PORT} - Addr: {address}, Args: {args}")
+                    except Exception as e_udp:
+                        print(f"[UDP OUT ERROR] Falha ao enviar para {TD_IP}:{TD_PORT} - Addr: {address}, Args: {args}. Erro: {e_udp}")
 
                     # 2. Envia confirmação de volta para o WebSocket que enviou a mensagem
                     confirmation_payload = {
                         "type": "confirmation",
                         "received_address": address,
                         "received_args": args,
-                        "status": " relayed_to_udp"
+                        "status": "relayed_to_udp"
                     }
                     await websocket.send(json.dumps(confirmation_payload))
-                    # print(f"WS Enviado Confirmação para {websocket.remote_address}: {address} {args}")
+                    # print(f"[WebSocket OUT] Confirmação enviada para {client_address}: {address}")
 
             except json.JSONDecodeError:
-                print(f"Erro: String recebida via WebSocket não é JSON válido: {message_str}")
+                print(f"[WebSocket ERROR] String de {client_address} não é JSON válido: {message_str}")
             except Exception as e:
-                print(f"Erro ao processar mensagem WebSocket: {e} (Mensagem: {message_str if isinstance(message, str) else message})") # Ajuste no print
+                print(f"[WebSocket ERROR] Erro ao processar mensagem de {client_address}: {e} (Mensagem: {message_str if isinstance(message, str) else message[:60]})")
     except websockets.exceptions.ConnectionClosed:
-        print(f"WebSocket desconectado: {websocket.remote_address}")
+        print(f"[WebSocket DISCONNECT] Cliente desconectado: {client_address}")
+    except Exception as e_conn: # Captura outras exceções na conexão
+        print(f"[WebSocket EXCEPTION] Exceção na conexão com {client_address}: {e_conn}")
     finally:
         active_websockets.remove(websocket)
+        print(f"[WebSocket INFO] Cliente {client_address} removido dos ativos. Total ativos: {len(active_websockets)}")
 
 async def main():
     # Configura e inicia o servidor OSC UDP para escuta

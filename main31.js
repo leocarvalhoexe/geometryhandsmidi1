@@ -1,6 +1,67 @@
 const videoElement = document.getElementById('video');
 const canvasElement = document.getElementById('canvas');
-const ctx = canvasElement.getContext('2d');
+let ctx = canvasElement.getContext('2d'); // Será 2D ou WebGL2
+
+// --- WebGL2 Check ---
+function checkWebGL2Support() {
+  try {
+    const testCanvas = document.createElement('canvas');
+    if (testCanvas.getContext && testCanvas.getContext('webgl2')) {
+      console.log("WebGL2 suportado.");
+      return true;
+    }
+  } catch (e) {
+    // ignore
+  }
+  console.warn("WebGL2 não suportado pelo navegador.");
+  return false;
+}
+
+let hasWebGL2 = checkWebGL2Support();
+
+if (hasWebGL2) {
+    try {
+        // Tentar obter contexto WebGL2 para MediaPipe, se necessário, ou manter 2D para desenho customizado.
+        // Por enquanto, MediaPipe Hands no JS geralmente usa CanvasRenderingContext2D para desenhar sobre o vídeo.
+        // A verificação de WebGL2 é mais para alertar o usuário se alguma futura funcionalidade depender disso.
+        // ctx = canvasElement.getContext('webgl2'); // Se fosse usar WebGL2 para o desenho principal.
+        // console.log("Contexto WebGL2 obtido para o canvas principal.");
+    } catch (e) {
+        console.error("Erro ao obter contexto WebGL2, usando fallback para 2D.", e);
+        hasWebGL2 = false; // Fallback
+        ctx = canvasElement.getContext('2d'); // Garante que ctx seja 2D se WebGL2 falhar
+    }
+}
+
+function displayGlobalError(message, duration = 10000) {
+    let errorDiv = document.getElementById('globalErrorDisplay');
+    if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.id = 'globalErrorDisplay';
+        errorDiv.style.position = 'fixed';
+        errorDiv.style.top = '10px';
+        errorDiv.style.left = '50%';
+        errorDiv.style.transform = 'translateX(-50%)';
+        errorDiv.style.padding = '10px 20px';
+        errorDiv.style.backgroundColor = '#e06c75'; // Cor de erro
+        errorDiv.style.color = 'white';
+        errorDiv.style.zIndex = '2000';
+        errorDiv.style.borderRadius = '5px';
+        errorDiv.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
+        errorDiv.style.textAlign = 'center';
+        document.body.appendChild(errorDiv);
+    }
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    setTimeout(() => {
+        errorDiv.style.display = 'none';
+    }, duration);
+}
+
+if (!hasWebGL2) {
+    displayGlobalError("Aviso: WebGL2 não está disponível. Algumas funcionalidades visuais podem ser limitadas.", 15000);
+}
+
 
 function resizeCanvas() {
   canvasElement.width = window.innerWidth;
@@ -58,6 +119,7 @@ let pulseModeActive = false;
 let pulseTime = 0;
 let pulseFrequency = 0.5;
 // let lastPulseValue = 0; // Não parece ser usado globalmente
+let midiEnabled = true; // Declarada globalmente
 let staccatoModeActive = false;
 let vertexPullModeActive = false;
 const maxPolyphony = 12;
@@ -119,12 +181,14 @@ const oscArgsInput = document.getElementById('oscArgsInput');
 const sendTestOSCButton = document.getElementById('sendTestOSCButton');
 const oscLogTextarea = document.getElementById('oscLogTextarea');
 const clearOscLogButton = document.getElementById('clearOscLogButton');
+const exportOscLogButton = document.getElementById('exportOscLogButton'); // Novo botão
 
 const syncDMXNotesButton = document.getElementById('syncDMXNotesButton');
 const recordOSCButton = document.getElementById('recordOSCButton');
 const playOSCLoopButton = document.getElementById('playOSCLoopButton');
 const oscLoopDurationInput = document.getElementById('oscLoopDurationInput'); // Input no modal OSC
 const spectatorModeButton = document.getElementById('spectatorModeButton');
+const resetMidiButton = document.getElementById('resetMidiButton'); // Novo botão
 
 let outputPopupWindow = null;
 let popupCanvasCtx = null;
@@ -135,14 +199,79 @@ let availableMidiOutputs = new Map();
 let availableMidiInputs = new Map();
 
 // --- OSC LOGGING ---
-function logOSC(direction, address, args) {
+let lastLogSource = "";
+function logOSC(source, address, args, isSeparator = false) {
     if (oscLogTextarea) {
+        if (isSeparator) {
+            oscLogTextarea.value += `--- Log Separator (${new Date().toLocaleTimeString()}) ---\n`;
+            lastLogSource = "SEPARATOR";
+            oscLogTextarea.scrollTop = oscLogTextarea.scrollHeight;
+            return;
+        }
+
+        const timestamp = new Date().toLocaleTimeString();
+        let classSource = "system"; // Default
+        let sourcePrefix = "SYS";
+
+        switch (source.toUpperCase()) {
+            case "OUT": classSource = "out"; sourcePrefix = "OUT"; break;
+            case "IN (UDP)": classSource = "in"; sourcePrefix = "UDP"; break;
+            case "MIDI->OSC": classSource = "midi"; sourcePrefix = "MIDI"; break;
+            case "LOOP": classSource = "loop"; sourcePrefix = "LOOP"; break;
+            case "PANEL": classSource = "panel"; sourcePrefix = "PANEL"; break;
+            case "REC INFO": classSource = "system"; sourcePrefix = "REC"; break; // Ou outra cor
+            case "SYSTEM": classSource = "system"; sourcePrefix = "SYS"; break;
+        }
+
+        // Adiciona separador visual se a fonte mudou
+        if (source.toUpperCase() !== lastLogSource && lastLogSource !== "" && lastLogSource !== "SEPARATOR") {
+             oscLogTextarea.value += `-------------------------------------\n`;
+        }
+        lastLogSource = source.toUpperCase();
+
+        // Para fins de exibição no textarea, não podemos usar HTML/CSS diretamente.
+        // A coloração precisaria de um elemento div com `contenteditable=false` e `innerHTML`.
+        // Por simplicidade no textarea, vamos apenas prefixar.
+        // Se fosse um div:
+        // const logEntry = document.createElement('div');
+        // logEntry.className = `log-entry log-source-${classSource}`;
+        // logEntry.textContent = `${timestamp} [${sourcePrefix}] ${address} ${JSON.stringify(args)}`;
+        // oscLogTextarea.appendChild(logEntry);
+
         const type = args && args.length > 0 && typeof args[0] === 'object' && args[0].type ? ` (${args.map(a => a.type).join(', ')})` : '';
         const argString = JSON.stringify(args);
-        oscLogTextarea.value += `${direction}: ${address}${type} ${argString}\n`;
+        oscLogTextarea.value += `${timestamp} [${sourcePrefix}] ${address}${type} ${argString}\n`;
+
         oscLogTextarea.scrollTop = oscLogTextarea.scrollHeight; // Auto-scroll
     }
 }
+
+function exportOSCLog() {
+    if (!oscLogTextarea || oscLogTextarea.value.trim() === "") {
+        alert("Log OSC está vazio. Nada para exportar.");
+        return;
+    }
+    try {
+        const blob = new Blob([oscLogTextarea.value], { type: 'text/plain;charset=utf-8' });
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+        const filename = `osc_log_v31_${timestamp}.txt`;
+
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link); // Necessário para Firefox
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        logOSC("SYSTEM", "Log OSC exportado.", [filename]);
+    } catch (e) {
+        console.error("Erro ao exportar log OSC:", e);
+        alert("Falha ao exportar log OSC.");
+        logOSC("SYSTEM", "Falha ao exportar log OSC.", [e.message]);
+    }
+}
+
 
 // --- OSC SETUP & COMMUNICATION ---
 function sendOSCMessage(address, ...args) {
@@ -258,15 +387,84 @@ function setupOSC() {
 }
 
 function handleIncomingExternalOSC(oscMessage) { // Chamado por `osc.on('message', ...)`
-    // Se vier do python-osc (UDP), args são simples. Se for do osc.js, args são {type, value}
-    const args = oscMessage.args.map(arg => (arg && arg.value !== undefined) ? arg.value : arg);
-    // console.log(`Handling External OSC: ${oscMessage.address}`, args);
+    if (spectatorModeActive) return; // Ignora comandos externos no modo espectador
 
-    // Exemplo de como rotear comandos externos (não implementado em detalhe aqui)
-    // if (oscMessage.address === '/external/shape/1/color' && args.length === 3) {
-    //   if (!spectatorModeActive) shapes[0].color = `rgb(${args[0]},${args[1]},${args[2]})`;
-    // }
+    const address = oscMessage.address;
+    const args = oscMessage.args.map(arg => (arg && arg.value !== undefined) ? arg.value : arg);
+    console.log(`OSC IN (UDP Routed): ${address}`, args);
+
+    const shapeControlRegex = /^\/forma\/(\d+)\/(setRadius|setSides)$/;
+    const shapeMatch = address.match(shapeControlRegex);
+
+    if (shapeMatch) {
+        const shapeId = parseInt(shapeMatch[1], 10) - 1; // OSC é 1-indexed, array é 0-indexed
+        const command = shapeMatch[2];
+        const value = parseFloat(args[0]);
+
+        if (shapeId >= 0 && shapeId < shapes.length && !isNaN(value)) {
+            const shape = shapes[shapeId];
+            if (command === "setRadius") {
+                if (value >= 10 && value <= 500) { // Adiciona alguma validação
+                    shape.radius = value;
+                    console.log(`Shape ${shapeId + 1} radius set to ${value} via OSC`);
+                    sendOSCMessage(`/forma/${shapeId + 1}/radius`, shape.radius); // Confirmação / atualização
+                } else {
+                    console.warn(`OSC: Valor de raio inválido para forma ${shapeId + 1}: ${value}`);
+                }
+            } else if (command === "setSides") {
+                const intValue = parseInt(args[0], 10);
+                if (intValue >= 3 && intValue <= 100) { // 100 para círculo
+                    shape.sides = intValue;
+                    if(shape.currentEdgeIndex >= shape.sides) shape.currentEdgeIndex = Math.max(0, shape.sides-1);
+                    turnOffAllActiveNotesForShape(shape); // Desliga notas da forma ao mudar lados
+                    console.log(`Shape ${shapeId + 1} sides set to ${intValue} via OSC`);
+                    sendOSCMessage(`/forma/${shapeId + 1}/sides`, shape.sides); // Confirmação / atualização
+                } else {
+                    console.warn(`OSC: Valor de lados inválido para forma ${shapeId + 1}: ${intValue}`);
+                }
+            }
+            updateHUD(); // Atualiza o HUD se os valores da forma mudarem
+        } else {
+            console.warn(`OSC: ID de forma ou valor inválido para ${address}: ${args}`);
+        }
+    } else if (address === '/recordOSC/start') {
+        if (!isRecordingOSC) {
+            toggleOSCRecording(); // Inicia a gravação
+            console.log("OSC: Gravação OSC iniciada remotamente.");
+        }
+    } else if (address === '/recordOSC/stop') {
+        if (isRecordingOSC) {
+            toggleOSCRecording(); // Para a gravação
+            console.log("OSC: Gravação OSC parada remotamente.");
+        }
+    } else if (address === '/playOSC/start') {
+        if (!isPlayingOSCLoop && recordedOSCSequence.length > 0) {
+            playRecordedOSCLoop(); // Inicia o playback
+            console.log("OSC: Playback OSC iniciado remotamente.");
+        } else if (recordedOSCSequence.length === 0) {
+            console.warn("OSC: Playback não iniciado, nenhuma sequência gravada.");
+        }
+    } else if (address === '/playOSC/stop') {
+        if (isPlayingOSCLoop) {
+            playRecordedOSCLoop(); // Para o playback
+            console.log("OSC: Playback OSC parado remotamente.");
+        }
+    }
+    // Adicionar aqui outros handlers para comandos OSC externos.
 }
+
+function turnOffAllActiveNotesForShape(shape) {
+    if (spectatorModeActive) return;
+    const origMidiEnabled = midiEnabled;
+    midiEnabled = true; // Força envio se necessário
+    Object.values(shape.activeMidiNotes).forEach(noteInfo => {
+        if (noteInfo.playing) sendMidiNoteOff(noteInfo.note, shape.midiChannel, shape.id + 1);
+        if (noteInfo.staccatoTimer) clearTimeout(noteInfo.staccatoTimer);
+    });
+    shape.activeMidiNotes = {};
+    midiEnabled = origMidiEnabled;
+}
+
 
 // --- MIDI SETUP & HANDLING ---
 function updateMidiDeviceLists() {
@@ -434,8 +632,11 @@ async function initializeCamera() {
     // Usa Camera para processar frames do videoElement
     const camera = new Camera(videoElement, {
       onFrame: async () => {
-        if (videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) { // Checa se tem dados no video
+        if (videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !cameraError) { // Checa se tem dados no video E se não há erro
              await handsInstance.send({ image: videoElement });
+        } else if (cameraError) {
+            drawFallbackAnimation(); // Chama o fallback se a câmera falhou
+            updateHUD(); // Mantém o HUD atualizado
         }
       },
       width: 640, height: 480
@@ -444,9 +645,70 @@ async function initializeCamera() {
     console.log("Camera e MediaPipe Hands inicializados.");
   } catch (error) {
     console.error("Falha ao acessar webcam ou iniciar MediaPipe Hands:", error);
-    displayGlobalError(`Falha webcam: ${error.message}. Verifique permissões.`);
+    displayGlobalError(`Falha webcam/MediaPipe: ${error.message}. Verifique permissões. Usando fallback visual.`, 20000);
+    cameraError = true;
+    // Não precisa chamar requestAnimationFrame(drawFallbackAnimation) aqui,
+    // pois o onFrame da camera já vai fazer isso.
   }
 }
+
+let cameraError = false;
+let fallbackShapes = [];
+
+function initFallbackShapes() {
+    if (fallbackShapes.length > 0) return;
+    const numShapes = 5;
+    const colors = ["#FF00FF", "#00FFFF", "#FFFF00", "#FF0000", "#00FF00"];
+    for (let i = 0; i < numShapes; i++) {
+        fallbackShapes.push({
+            x: Math.random() * canvasElement.width,
+            y: Math.random() * canvasElement.height,
+            radius: 20 + Math.random() * 30,
+            color: colors[i % colors.length],
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4,
+            sides: 3 + Math.floor(Math.random() * 5)
+        });
+    }
+}
+
+function drawFallbackAnimation() {
+    if (fallbackShapes.length === 0) initFallbackShapes();
+
+    ctx.fillStyle = 'rgba(0,0,0,0.1)'; // Limpa a tela com um leve rastro
+    ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+    ctx.font = "20px Arial";
+    ctx.fillStyle = "#777";
+    ctx.textAlign = "center";
+    ctx.fillText("Detecção de mãos indisponível. Exibindo animação alternativa.", canvasElement.width / 2, canvasElement.height / 2 - 50);
+
+    fallbackShapes.forEach(shape => {
+        shape.x += shape.vx;
+        shape.y += shape.vy;
+
+        if (shape.x - shape.radius < 0 || shape.x + shape.radius > canvasElement.width) shape.vx *= -1;
+        if (shape.y - shape.radius < 0 || shape.y + shape.radius > canvasElement.height) shape.vy *= -1;
+
+        ctx.beginPath();
+        for (let i = 0; i < shape.sides; i++) {
+            const angle = (i / shape.sides) * Math.PI * 2 + (performance.now() / 1000) * (shape.vx > 0 ? 0.5 : -0.5) ;
+            const x = shape.x + shape.radius * Math.cos(angle);
+            const y = shape.y + shape.radius * Math.sin(angle);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = shape.color;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    });
+
+    // Se onResults não estiver sendo chamado devido ao erro da câmera, precisamos de um loop de animação explícito.
+    // No entanto, a modificação no `onFrame` da Câmera já deve lidar com isso.
+    // requestAnimationFrame(drawFallbackAnimation); // Apenas se onFrame não for chamado
+}
+
 
 // --- GLOBAL STATES OSC ---
 function sendAllGlobalStatesOSC() {
@@ -481,11 +743,11 @@ function setupEventListeners() {
     });
 
     // MIDI Device Selects
-    if (midiOutputSelect) midiOutputSelect.addEventListener('change', () => { midiOutput = availableMidiOutputs.get(midiOutputSelect.value) || null; turnOffAllActiveNotes(); });
-    if (midiInputSelect) midiInputSelect.addEventListener('change', () => setMidiInput(availableMidiInputs.get(midiInputSelect.value) || null));
+    if (midiOutputSelect) midiOutputSelect.addEventListener('change', () => { midiOutput = availableMidiOutputs.get(midiOutputSelect.value) || null; turnOffAllActiveNotes(); saveAllPersistentSettings(); });
+    if (midiInputSelect) midiInputSelect.addEventListener('change', () => { setMidiInput(availableMidiInputs.get(midiInputSelect.value) || null); saveAllPersistentSettings(); });
 
     // Arpeggio Controls
-    if (arpeggioStyleSelect) arpeggioStyleSelect.addEventListener('change', (e) => { if (spectatorModeActive) return; currentArpeggioStyle = e.target.value; saveArpeggioSettings(); updateHUD(); sendOSCMessage('/global/state/arpeggioStyle', currentArpeggioStyle); });
+    if (arpeggioStyleSelect) arpeggioStyleSelect.addEventListener('change', (e) => { if (spectatorModeActive) return; currentArpeggioStyle = e.target.value; saveArpeggioSettings(); updateHUD(); sendOSCMessage('/global/state/arpeggioStyle', currentArpeggioStyle); /* saveAllPersistentSettings() é chamado indiretamente por saveArpeggioSettings via wrapper se necessário, ou saveArpeggioSettings é suficiente se só mexe em arpejo */ });
     if (arpeggioBPMSlider) arpeggioBPMSlider.addEventListener('input', (e) => { if (spectatorModeActive || externalBPM !== null) return; arpeggioBPM = parseInt(e.target.value); arpeggioBPMValueSpan.textContent = arpeggioBPM; noteInterval = 60000 / arpeggioBPM; if(noteIntervalSlider) noteIntervalSlider.value = noteInterval; if(noteIntervalValueSpan) noteIntervalValueSpan.textContent = Math.round(noteInterval); saveArpeggioSettings(); updateHUD(); sendOSCMessage('/global/state/arpeggioBPM', arpeggioBPM); });
     if (noteIntervalSlider) noteIntervalSlider.addEventListener('input', (e) => { if (spectatorModeActive || externalBPM !== null) return; noteInterval = parseInt(e.target.value); noteIntervalValueSpan.textContent = noteInterval; arpeggioBPM = 60000 / noteInterval; if(arpeggioBPMSlider) arpeggioBPMSlider.value = arpeggioBPM; if(arpeggioBPMValueSpan) arpeggioBPMValueSpan.textContent = Math.round(arpeggioBPM); saveArpeggioSettings(); updateHUD(); sendOSCMessage('/global/state/arpeggioBPM', Math.round(arpeggioBPM)); });
 
@@ -507,8 +769,9 @@ function setupEventListeners() {
         logOSC("OUT (Panel)", address, args);
         oscArgsInput.value = ''; // Limpa para facilitar
     });
-    if (clearOscLogButton) clearOscLogButton.addEventListener('click', () => { if(oscLogTextarea) oscLogTextarea.value = "Log OSC limpo.\n";});
-    if (oscLoopDurationInput) oscLoopDurationInput.addEventListener('change', () => { if (spectatorModeActive) return; const d = parseInt(oscLoopDurationInput.value); if (d > 0) oscLoopDuration = d; else oscLoopDurationInput.value = oscLoopDuration; });
+    if (clearOscLogButton) clearOscLogButton.addEventListener('click', () => { if(oscLogTextarea) { oscLogTextarea.value = `Log OSC limpo (${new Date().toLocaleTimeString()}).\n`; lastLogSource = "";}});
+    if (exportOscLogButton) exportOscLogButton.addEventListener('click', exportOSCLog);
+    if (oscLoopDurationInput) oscLoopDurationInput.addEventListener('change', () => { if (spectatorModeActive) return; const d = parseInt(oscLoopDurationInput.value); if (d > 0) oscLoopDuration = d; else oscLoopDurationInput.value = oscLoopDuration; saveAllPersistentSettings(); });
 
 
     // Main Control Buttons
@@ -520,11 +783,75 @@ function setupEventListeners() {
     if (playOSCLoopButton) playOSCLoopButton.addEventListener('click', playRecordedOSCLoop);
     if (spectatorModeButton) spectatorModeButton.addEventListener('click', toggleSpectatorMode);
     if (openOutputPopupButton) openOutputPopupButton.addEventListener('click', openPopup);
+    if (resetMidiButton) resetMidiButton.addEventListener('click', resetMidiSystem);
 
 
     // Keyboard Shortcuts
     document.addEventListener('keydown', handleKeyPress);
 }
+
+// --- MIDI RESET FUNCTION ---
+function resetMidiSystem() {
+    if (spectatorModeActive) return;
+    console.log("MIDI Reset Solicitado.");
+
+    // 1. Desligar todas as notas ativas
+    turnOffAllActiveNotes();
+
+    // 2. Enviar MIDI CC "All Sound Off" (120) e "Reset All Controllers" (121) em todos os canais
+    // É importante fazer isso mesmo se midiEnabled for false, para garantir o reset no dispositivo.
+    const origMidiEnabled = midiEnabled;
+    const origMidiOutput = midiOutput;
+    midiEnabled = true; // Temporariamente permite o envio
+
+    if (midiOutput) {
+        console.log(`Enviando All Sound Off / Reset All Controllers para ${midiOutput.name}`);
+        for (let ch = 0; ch < 16; ch++) {
+            midiOutput.send([0xB0 + ch, 120, 0]); // All Sound Off
+            midiOutput.send([0xB0 + ch, 121, 0]); // Reset All Controllers
+        }
+        // Opcional: Enviar Note Off para todas as notas em todos os canais
+        // for (let ch = 0; ch < 16; ch++) {
+        //   for (let note = 0; note < 128; note++) {
+        //     midiOutput.send([0x80 + ch, note, 0]);
+        //   }
+        // }
+    } else {
+        console.warn("Nenhuma porta MIDI de saída selecionada para o Reset MIDI.");
+    }
+
+    midiEnabled = origMidiEnabled; // Restaura o estado original
+
+    // 3. Resetar estados internos das formas (pitch bend, CCs)
+    shapes.forEach(shape => {
+        shape.currentPitchBend = 8192;
+        shape.reverbAmount = 0;
+        shape.delayAmount = 0;
+        shape.panValue = 64;
+        shape.brightnessValue = 64;
+        shape.modWheelValue = 0;
+        shape.resonanceValue = 0;
+        shape.lastSentReverb = -1; // Força reenvio se necessário
+        shape.lastSentDelay = -1;
+        shape.lastSentPan = -1;
+        shape.lastSentBrightness = -1;
+        shape.lastSentModWheel = -1;
+        shape.lastSentResonance = -1;
+        // Não reseta activeMidiNotes aqui, pois turnOffAllActiveNotes já limpou
+    });
+
+    // 4. Re-sincronizar o estado do MIDI (on/off) e HUD
+    // Se midiEnabled era true, pode ser útil enviar novamente o estado dos botões.
+    // Por exemplo, se o botão MIDI estava ON, reafirmar isso.
+    // No entanto, o simples reset dos controllers e notas já deve ser suficiente.
+    // Apenas atualiza o HUD.
+    updateHUD();
+    sendAllGlobalStatesOSC(); // Envia estados globais atualizados, incluindo CCs zerados implicitamente
+
+    displayGlobalError("Sistema MIDI Resetado.", 3000); // Feedback visual para o usuário
+    logOSC("SYSTEM", "MIDI Reset Executado", []);
+}
+
 
 // --- TOGGLE FUNCTIONS FOR BUTTONS & SHORTCUTS ---
 function toggleMidiEnabled() {
@@ -535,6 +862,7 @@ function toggleMidiEnabled() {
     if (!midiEnabled) turnOffAllActiveNotes();
     sendOSCMessage('/global/state/midiEnabled', midiEnabled ? 1 : 0);
     updateHUD();
+    saveAllPersistentSettings();
 }
 
 function toggleOperationMode() {
@@ -542,7 +870,9 @@ function toggleOperationMode() {
     operationMode = (operationMode === 'one_person') ? 'two_persons' : 'one_person';
     operationModeButton.textContent = `👤 Modo: ${operationMode === 'one_person' ? '1 Pessoa' : '2 Pessoas'}`;
     shapes.forEach(s => { s.leftHandLandmarks = null; s.rightHandLandmarks = null; s.activeGesture = null; s.lastSentActiveGesture = null; });
-    turnOffAllActiveNotes(); updateHUD();
+    turnOffAllActiveNotes();
+    updateHUD();
+    saveAllPersistentSettings();
 }
 
 function toggleDMXSync() {
@@ -552,6 +882,7 @@ function toggleDMXSync() {
     syncDMXNotesButton.classList.toggle('active', dmxSyncModeActive);
     sendOSCMessage('/global/state/dmxSyncMode', dmxSyncModeActive ? 1 : 0);
     updateHUD();
+    saveAllPersistentSettings();
 }
 
 function toggleMidiFeedback() {
@@ -561,6 +892,7 @@ function toggleMidiFeedback() {
     midiFeedbackToggleButton.classList.toggle('active', midiFeedbackEnabled);
     sendOSCMessage('/global/state/midiFeedbackEnabled', midiFeedbackEnabled ? 1 : 0);
     updateHUD();
+    saveAllPersistentSettings();
 }
 
 function toggleOSCRecording() {
@@ -678,12 +1010,13 @@ function handleKeyPress(e) {
     if (spectatorModeActive && e.key !== 'Escape') return; // No modo espectador, só Escape funciona
 
     const actionMap = {
-        'm': toggleMidiEnabled, 'l': () => { staccatoModeActive = !staccatoModeActive; sendOSCMessage('/global/state/staccatoMode', staccatoModeActive?1:0); updateHUD();},
-        'p': () => { if(!e.shiftKey) {pulseModeActive = !pulseModeActive; if(pulseModeActive)pulseTime=0; sendOSCMessage('/global/state/pulseMode', pulseModeActive?1:0); updateHUD();}}, // P normal
-        's': () => { if(!e.shiftKey) {currentScaleIndex=(currentScaleIndex+1)%scaleKeys.length; currentScaleName=scaleKeys[currentScaleIndex]; turnOffAllActiveNotes(); sendOSCMessage('/global/state/scale', currentScaleName); updateHUD();}}, // S normal
-        'n': () => { currentNoteModeIndex=(currentNoteModeIndex+1)%NOTE_MODES.length; currentNoteMode=NOTE_MODES[currentNoteModeIndex]; turnOffAllActiveNotes(); sendOSCMessage('/global/noteModeChanged', currentNoteMode); updateHUD(); },
-        'v': () => { vertexPullModeActive=!vertexPullModeActive; if(!vertexPullModeActive)shapes.forEach(s=>{s.vertexOffsets={};s.beingPulledByFinger={};}); sendOSCMessage('/global/state/vertexPullMode',vertexPullModeActive?1:0); updateHUD();},
-        'c': () => { if(!e.shiftKey) {chordMode=(chordMode==="TRIAD")?"VERTEX_ALL":"TRIAD"; sendOSCMessage('/global/state/chordMode',chordMode); updateHUD();}}, // C normal
+        'm': toggleMidiEnabled,
+        'l': () => { staccatoModeActive = !staccatoModeActive; sendOSCMessage('/global/state/staccatoMode', staccatoModeActive?1:0); updateHUD(); saveAllPersistentSettings();},
+        'p': () => { if(!e.shiftKey) {pulseModeActive = !pulseModeActive; if(pulseModeActive)pulseTime=0; sendOSCMessage('/global/state/pulseMode', pulseModeActive?1:0); updateHUD(); saveAllPersistentSettings();}}, // P normal
+        's': () => { if(!e.shiftKey) {currentScaleIndex=(currentScaleIndex+1)%scaleKeys.length; currentScaleName=scaleKeys[currentScaleIndex]; turnOffAllActiveNotes(); sendOSCMessage('/global/state/scale', currentScaleName); updateHUD(); /* scale não é persistente assim */}}, // S normal
+        'n': () => { currentNoteModeIndex=(currentNoteModeIndex+1)%NOTE_MODES.length; currentNoteMode=NOTE_MODES[currentNoteModeIndex]; turnOffAllActiveNotes(); sendOSCMessage('/global/noteModeChanged', currentNoteMode); updateHUD(); /* note mode não é persistente */ },
+        'v': () => { vertexPullModeActive=!vertexPullModeActive; if(!vertexPullModeActive)shapes.forEach(s=>{s.vertexOffsets={};s.beingPulledByFinger={};}); sendOSCMessage('/global/state/vertexPullMode',vertexPullModeActive?1:0); updateHUD(); /* vertex pull não é persistente */},
+        'c': () => { if(!e.shiftKey) {chordMode=(chordMode==="TRIAD")?"VERTEX_ALL":"TRIAD"; sendOSCMessage('/global/state/chordMode',chordMode); updateHUD(); /* chordMode não é persistente assim */}}, // C normal
     };
     const shiftActionMap = {
         'I': () => infoModal.style.display = infoModal.style.display === 'flex' ? 'none' : 'flex',
@@ -1048,7 +1381,15 @@ function updateHUD() {
   if (currentNoteMode === 'ARPEGGIO') txt += `&nbsp;&nbsp;Arp: ${currentArpeggioStyle} BPM:${arpeggioBPM.toFixed(0)}${externalBPM!==null?'(Ext)':''} Idx:${shapes.map(s=>s.currentEdgeIndex).join('/')}<br>`;
   txt += `&nbsp;&nbsp;DMX Sync:${dmxSyncModeActive?'<span class="status-ok">ON</span>':'OFF'} | MIDI In:${midiFeedbackEnabled?'<span class="status-ok">ON</span>':'OFF'}<br>`;
   if (isRecordingOSC) txt += `&nbsp;&nbsp;<span class="status-error">🔴 Gravando OSC</span> (${recordedOSCSequence.length})<br>`;
-  if (isPlayingOSCLoop) txt += `&nbsp;&nbsp;<span class="status-warn">▶️ Loop OSC</span> (${oscLoopDuration/1000}s)<br>`;
+  if (isPlayingOSCLoop) {
+    const loopProgress = ((performance.now() - playbackStartTime) % oscLoopDuration) / oscLoopDuration;
+    const progressBarLength = 10;
+    const progressChars = Math.floor(loopProgress * progressBarLength);
+    const progressBar = ' ['.padEnd(progressChars + 2, '■').padEnd(progressBarLength + 2, '□') + ']';
+    txt += `&nbsp;&nbsp;<span class="status-warn">▶️ Loop OSC Ativo${progressBar}</span> (${(oscLoopDuration/1000).toFixed(1)}s)<br>`;
+  } else if (recordedOSCSequence.length > 0) {
+    txt += `&nbsp;&nbsp;Loop OSC Pronto (${recordedOSCSequence.length} msgs, ${(oscLoopDuration/1000).toFixed(1)}s)<br>`;
+  }
   txt += `<b>OSC:</b> <span class="${osc.status() === OSC.STATUS.IS_OPEN ? 'status-ok':'status-error'}">${oscStatus}</span>`;
   hudElement.innerHTML = txt;
 
@@ -1074,30 +1415,156 @@ function updateHUD() {
 }
 
 
+// --- PERSISTENT SETTINGS (localStorage) ---
+const APP_SETTINGS_KEY = 'midiShapeManipulatorV31Settings';
+
+function savePersistentSetting(key, value) {
+    try {
+        const settings = JSON.parse(localStorage.getItem(APP_SETTINGS_KEY)) || {};
+        settings[key] = value;
+        localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) {
+        console.warn("Erro ao salvar configuração persistente:", e);
+    }
+}
+
+function loadPersistentSetting(key, defaultValue) {
+    try {
+        const settings = JSON.parse(localStorage.getItem(APP_SETTINGS_KEY)) || {};
+        return settings[key] !== undefined ? settings[key] : defaultValue;
+    } catch (e) {
+        console.warn("Erro ao carregar configuração persistente:", e);
+        return defaultValue;
+    }
+}
+
+function saveAllPersistentSettings() {
+    // Não salva spectatorModeActive como persistente, deve ser resetado a cada sessão.
+    savePersistentSetting('operationMode', operationMode);
+    savePersistentSetting('midiEnabled', midiEnabled);
+    savePersistentSetting('staccatoModeActive', staccatoModeActive);
+    savePersistentSetting('pulseModeActive', pulseModeActive);
+    savePersistentSetting('midiOutputId', midiOutput ? midiOutput.id : null);
+    savePersistentSetting('midiInputId', midiInput ? midiInput.id : null);
+    savePersistentSetting('midiFeedbackEnabled', midiFeedbackEnabled);
+    savePersistentSetting('dmxSyncModeActive', dmxSyncModeActive);
+    savePersistentSetting('oscLoopDuration', oscLoopDuration);
+    // Arpeggio settings são salvas por saveArpeggioSettings() que já usa localStorage
+    // saveArpeggioSettings(); // Chamado quando os valores de arpejo mudam
+    console.log("Configurações persistentes salvas.");
+}
+
+function loadAllPersistentSettings() {
+    operationMode = loadPersistentSetting('operationMode', 'two_persons');
+    midiEnabled = loadPersistentSetting('midiEnabled', true); // Default MIDI ON
+    staccatoModeActive = loadPersistentSetting('staccatoModeActive', false);
+    pulseModeActive = loadPersistentSetting('pulseModeActive', false);
+    // spectatorModeActive é sempre false no início
+    const savedMidiOutputId = loadPersistentSetting('midiOutputId', null);
+    const savedMidiInputId = loadPersistentSetting('midiInputId', null);
+    midiFeedbackEnabled = loadPersistentSetting('midiFeedbackEnabled', false);
+    dmxSyncModeActive = loadPersistentSetting('dmxSyncModeActive', false);
+    oscLoopDuration = loadPersistentSetting('oscLoopDuration', 5000);
+
+    // Arpeggio settings são carregadas por loadArpeggioSettings()
+    loadArpeggioSettings(); // Carrega BPM, estilo, intervalo
+
+    // Aplicar configurações carregadas à UI e estado
+    // MIDI output/input serão selecionados após initMidi() e updateMidiDeviceLists()
+    // As outras configurações serão refletidas pelos botões e HUD na inicialização.
+    console.log("Configurações persistentes carregadas.");
+    return { savedMidiOutputId, savedMidiInputId }; // Retorna para uso após initMidi
+}
+
+
+// --- ARPEGGIO SETTINGS (já usava localStorage, adaptado para consistência) ---
+const ARPEGGIO_SETTINGS_KEY = 'arpeggioSettingsV31'; // Chave específica para arpejo
+
+function saveArpeggioSettings() {
+    const settings = { currentArpeggioStyle, arpeggioBPM, noteInterval, externalBPM };
+    try {
+        localStorage.setItem(ARPEGGIO_SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) {
+        console.warn("Erro ao salvar configurações de arpejo:", e);
+    }
+    savePersistentSetting('arpeggioSettingsLastUpdate', Date.now()); // Para referência geral
+}
+
+function loadArpeggioSettings() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(ARPEGGIO_SETTINGS_KEY));
+        if (saved) {
+            currentArpeggioStyle = saved.currentArpeggioStyle || "UP";
+            arpeggioBPM = saved.arpeggioBPM || 120;
+            noteInterval = saved.noteInterval || (60000 / arpeggioBPM);
+            // externalBPM não é persistido, sempre começa como null
+        }
+    } catch (e) {
+        console.warn("Erro ao carregar configurações de arpejo, usando padrões.", e);
+        currentArpeggioStyle = "UP"; arpeggioBPM = 120; noteInterval = 500;
+    }
+
+    // Atualiza UI do Arpejo
+    if (arpeggioStyleSelect) arpeggioStyleSelect.value = currentArpeggioStyle;
+    if (arpeggioBPMSlider) arpeggioBPMSlider.value = arpeggioBPM;
+    if (arpeggioBPMValueSpan) arpeggioBPMValueSpan.textContent = arpeggioBPM;
+    if (noteIntervalSlider) noteIntervalSlider.value = noteInterval;
+    if (noteIntervalValueSpan) noteIntervalValueSpan.textContent = noteInterval;
+}
+
+
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("DOM Carregado. Iniciando main30.js...");
-    initMidi();
+    console.log("DOM Carregado. Iniciando main31.js...");
+    const { savedMidiOutputId, savedMidiInputId } = loadAllPersistentSettings();
+
+    initMidi().then(() => {
+        // Após MIDI inicializado e listas populadas, tenta selecionar os dispositivos salvos
+        if (savedMidiOutputId && availableMidiOutputs.has(savedMidiOutputId)) {
+            midiOutputSelect.value = savedMidiOutputId;
+            midiOutput = availableMidiOutputs.get(savedMidiOutputId);
+        } else if (availableMidiOutputs.size > 0) {
+            midiOutputSelect.selectedIndex = 0; // Seleciona o primeiro se o salvo não existir
+            midiOutput = availableMidiOutputs.get(midiOutputSelect.value);
+        }
+
+        if (savedMidiInputId && availableMidiInputs.has(savedMidiInputId)) {
+            midiInputSelect.value = savedMidiInputId;
+            setMidiInput(availableMidiInputs.get(savedMidiInputId));
+        } else if (availableMidiInputs.size > 0) {
+             midiInputSelect.selectedIndex = 0;
+             setMidiInput(availableMidiInputs.get(midiInputSelect.value));
+        }
+        // Salva novamente para caso um fallback tenha sido usado
+        savePersistentSetting('midiOutputId', midiOutput ? midiOutput.id : null);
+        savePersistentSetting('midiInputId', midiInput ? midiInput.id : null);
+    });
+
     setupOSC();
     initializeCamera(); // MediaPipe Hands init is inside
     setupEventListeners();
 
-    loadArpeggioSettings();
+    // loadArpeggioSettings(); // Já chamado por loadAllPersistentSettings
     populateArpeggioStyleSelect();
-    if(oscLoopDurationInput) oscLoopDurationInput.value = oscLoopDuration;
+    if(oscLoopDurationInput) oscLoopDurationInput.value = oscLoopDuration; // Aplicar valor carregado
 
-    // Set initial button states based on variables
+    // Set initial button states based on loaded variables
+    midiToggleButton.textContent = midiEnabled ? "🎹 MIDI ON" : "🎹 MIDI OFF";
     midiToggleButton.classList.toggle('active', midiEnabled);
-    syncDMXNotesButton.classList.toggle('active', dmxSyncModeActive);
+    operationModeButton.textContent = `👤 Modo: ${operationMode === 'one_person' ? '1 Pessoa' : '2 Pessoas'}`;
     syncDMXNotesButton.textContent = `🎶 Sync DMX ${dmxSyncModeActive ? 'ON' : 'OFF'}`;
-    midiFeedbackToggleButton.classList.toggle('active', midiFeedbackEnabled);
+    syncDMXNotesButton.classList.toggle('active', dmxSyncModeActive);
     midiFeedbackToggleButton.textContent = `🎤 MIDI In ${midiFeedbackEnabled ? 'ON' : 'OFF'}`;
+    midiFeedbackToggleButton.classList.toggle('active', midiFeedbackEnabled);
+    spectatorModeButton.textContent = `👓 Espectador ${spectatorModeActive ? 'ON' : 'OFF'}`; // spectatorModeActive é sempre false no início
     spectatorModeButton.classList.toggle('active', spectatorModeActive);
-    spectatorModeButton.textContent = `👓 Espectador ${spectatorModeActive ? 'ON' : 'OFF'}`;
+
+    // Outros estados da UI que dependem de variáveis carregadas
+    // (pulseModeActive, staccatoModeActive são refletidos no HUD)
 
     updateHUD(); // Initial HUD draw
     sendAllGlobalStatesOSC(); // Send initial states
 
-    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()}\n`;
-    console.log("main30.js inicialização completa.");
+    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configurações Carregadas.\n`;
+    console.log("main31.js inicialização completa.");
 });
