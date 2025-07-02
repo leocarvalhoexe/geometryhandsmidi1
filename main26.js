@@ -99,7 +99,7 @@ function setupOSC() {
     console.log(oscStatus);
     updateHUD();
     // Optional: attempt to reconnect
-    // setTimeout(setupOSC, 5000); 
+    // setTimeout(setupOSC, 5000);
   });
 
   osc.on('error', (err) => {
@@ -138,7 +138,7 @@ function setupOSC() {
       updateHUD();
     }
   });
-  
+
   osc.on('/global/setPulseActive', msg => {
     if (typeof msg.args[0] === 'number' || typeof msg.args[0] === 'boolean') {
         pulseModeActive = !!msg.args[0];
@@ -211,7 +211,7 @@ function setupOSC() {
   });
 }
 
-setupOSC(); 
+setupOSC();
 
 const hands = new Hands({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
@@ -422,7 +422,7 @@ function getNoteInScale(index, baseOctaveOffset = 0) {
   const octave = baseOctaveOffset + Math.floor(index / scaleLength);
   const noteIndexInScale = index % scaleLength;
   let note = scale.baseMidiNote + scaleNotes[noteIndexInScale] + (octave * 12);
-  
+
   // Ensure note is within MIDI range 0-127
   note = Math.max(0, Math.min(127, note));
   return note;
@@ -452,27 +452,23 @@ function turnOffAllActiveNotes() {
 
 
 async function initializeCamera() {
-  console.log("Attempting to initialize camera - v25 debug"); // Updated log
+  console.log("Attempting to initialize camera - v26");
   try {
-    // First, try to get user media to ensure permissions are prompted early.
-    // This is crucial for the user's problem: "não chega a pedir permissão da câmera"
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    // Stop the tracks immediately if we only needed this for permission and MediaPipe's Camera will handle its own stream.
     stream.getTracks().forEach(track => track.stop());
-    console.log("getUserMedia successful, camera permission likely granted. Proceeding with MediaPipe Camera - v25 debug");
+    console.log("getUserMedia successful, camera permission likely granted. Proceeding with MediaPipe Camera - v26");
 
     const camera = new Camera(videoElement, {
       onFrame: async () => {
-        // console.log("Camera onFrame triggered"); // DEBUG
-        if (videoElement.readyState >= 2) { // Ensure video is ready enough
+        if (videoElement.readyState >= 2) {
             await hands.send({ image: videoElement });
         }
       },
       width: 640,
       height: 480
     });
-    await camera.start(); // Make sure to await camera.start() if it's async and can throw
-    console.log("camera.start() called and awaited - v25 debug");
+    await camera.start();
+    console.log("camera.start() called and awaited - v26");
   } catch (error) {
     console.error("Failed to access webcam or start MediaPipe camera:", error);
     displayGlobalError("Falha ao acessar a webcam. <br>É necessário permitir o acesso à câmera para manipular a forma.<br><br>Erro: " + error.message + "<br><br>Por favor, verifique as permissões da câmera no seu navegador e tente recarregar a página.");
@@ -481,13 +477,10 @@ async function initializeCamera() {
 initializeCamera(); // Called globally
 
 document.addEventListener('keydown', (e) => {
-  // Key controls for radius might need to affect a default shape or be removed if all control is by hand
   if (e.key === '+') {
-    // shapes[0].radius = Math.min(shapes[0].radius + 10, 300); // Example: control shape 0
     updateHUD();
   }
   if (e.key === '-') {
-    // shapes[0].radius = Math.max(shapes[0].radius - 10, 30); // Example: control shape 0
     updateHUD();
   }
   if (e.key === 'p' || e.key === 'P') {
@@ -503,13 +496,13 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'l' || e.key === 'L') {
     staccatoModeActive = !staccatoModeActive;
-    updateHUD(); // Update HUD to show staccato/legato status
+    updateHUD();
   }
   if (e.key === 's' || e.key === 'S') {
     currentScaleIndex = (currentScaleIndex + 1) % scaleKeys.length;
     currentScaleName = scaleKeys[currentScaleIndex];
     console.log("Scale changed to:", SCALES[currentScaleName].name);
-    turnOffAllActiveNotes(); // Turn off notes from old scale
+    turnOffAllActiveNotes();
     updateHUD();
     if (osc && osc.status() === OSC.STATUS.IS_OPEN) {
         osc.send(new OSC.Message('/global/scaleChanged', currentScaleName, SCALES[currentScaleName].name));
@@ -519,7 +512,7 @@ document.addEventListener('keydown', (e) => {
     currentNoteModeIndex = (currentNoteModeIndex + 1) % NOTE_MODES.length;
     currentNoteMode = NOTE_MODES[currentNoteModeIndex];
     console.log("Note mode changed to:", currentNoteMode);
-    turnOffAllActiveNotes(); // Notes might change drastically
+    turnOffAllActiveNotes();
     updateHUD();
     if (osc && osc.status() === OSC.STATUS.IS_OPEN) {
         osc.send(new OSC.Message('/global/noteModeChanged', currentNoteMode));
@@ -528,7 +521,6 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'v' || e.key === 'V') {
     vertexPullModeActive = !vertexPullModeActive;
     if (!vertexPullModeActive) {
-      // Clear any existing pulls when mode is deactivated
       shapes.forEach(shape => {
         shape.vertexOffsets = {};
         shape.beingPulledByFinger = {};
@@ -582,49 +574,41 @@ function isTouchingCircle(x, y, cx, cy, r, tolerance = 20) {
   return Math.abs(d - r) <= tolerance;
 }
 
-// MODIFICATION: drawShape to accept a shape object and use its properties
-function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
+function drawShape(shape, isPulsing, pulseValue) {
   ctx.beginPath();
   const maxInfluenceDistance = 150;
-  const maxForce = 25; // For liquify
-  const fingertipsToUse = [4, 8, 12, 16, 20]; // For liquify
-  const noteInterval = 200; // ms between notes, can be adjusted or linked to pulse
+  const maxForce = 25;
+  const fingertipsToUse = [4, 8, 12, 16, 20];
+  const noteInterval = 200;
 
-  // Use shape's properties
   const cx = shape.centerX;
   const cy = shape.centerY;
-  let drawingRadius = shape.radius; // Base radius for drawing calculations
+  let drawingRadius = shape.radius;
 
-  // Pulse affects drawing radius
   if (isPulsing) {
-    let radiusModulationFactor = 0.25 * pulseValue; // pulseValue is sin wave from -1 to 1
-    drawingRadius = shape.radius * (1 + radiusModulationFactor); // Use un-smoothed radius for pulse calculation base
-    drawingRadius = Math.max(10, drawingRadius); // Minimum radius
+    let radiusModulationFactor = 0.25 * pulseValue;
+    drawingRadius = shape.radius * (1 + radiusModulationFactor);
+    drawingRadius = Math.max(10, drawingRadius);
   }
 
   let localRightHandLandmarks = shape.rightHandLandmarks;
-  // Disable liquify if another gesture is active on this shape or if global vertex pull is on for this shape
   if (shape.activeGesture && shape.activeGesture !== 'liquify') {
     localRightHandLandmarks = null;
   }
-  if (vertexPullModeActive && shape.activeGesture === 'pull') { // Specifically if 'pull' is the active gesture for *this* shape
+  if (vertexPullModeActive && shape.activeGesture === 'pull') {
       localRightHandLandmarks = null;
   }
-  
-  // Calculate overall distortion for this shape (used for pitch bend and CCs)
-  // This is a simplified approach. A more accurate one might average vertex displacements.
+
   let totalDisplacementMagnitude = 0;
   let activeLiquifyPoints = 0;
 
   for (let i = 0; i < shape.sides; i++) {
     const angle = (i / shape.sides) * Math.PI * 2;
-    // Base vertex position uses the (potentially pulsed) drawingRadius for visual consistency
     let vertexX_orig = drawingRadius * Math.cos(angle);
     let vertexY_orig = drawingRadius * Math.sin(angle);
     let totalDisplacementX = 0;
     let totalDisplacementY = 0;
 
-    // Liquify logic using localRightHandLandmarks
     if (localRightHandLandmarks) {
       const currentVertexCanvasX = cx + vertexX_orig;
       const currentVertexCanvasY = cy + vertexY_orig;
@@ -645,8 +629,7 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
         }
       }
     }
-    
-    // Apply vertex pulling offset if active for this vertex
+
     if (vertexPullModeActive && shape.vertexOffsets[i]) {
         totalDisplacementX += shape.vertexOffsets[i].x;
         totalDisplacementY += shape.vertexOffsets[i].y;
@@ -661,22 +644,21 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
 
     if (i === 0) ctx.moveTo(finalX, finalY);
     else ctx.lineTo(finalX, finalY);
-  } // End of vertex drawing loop
+  }
 
   ctx.closePath();
-  ctx.strokeStyle = shape.id === 0 ? 'cyan' : 'magenta'; // Different colors for shapes
+  ctx.strokeStyle = shape.id === 0 ? 'cyan' : 'magenta';
   ctx.lineWidth = 4;
   ctx.stroke();
 
-  // Update shape's global distortion metrics based on liquify/pulling
   const averageDisplacement = (shape.sides > 0 && activeLiquifyPoints > 0) ? totalDisplacementMagnitude / activeLiquifyPoints : (shape.sides > 0 && Object.keys(shape.vertexOffsets).length > 0 ? totalDisplacementMagnitude / Object.keys(shape.vertexOffsets).length : 0) ;
-  const maxObservedDistortion = 50.0; // Max average displacement to map to full pitch bend/CC range
-  const pitchBendSensitivity = 4096; // How much bend for max distortion (e.g., 4096 for ~1 octave if configured in synth)
-  
-  let calculatedPitchBend = 8192; // Center value
+  const maxObservedDistortion = 50.0;
+  const pitchBendSensitivity = 4096;
+
+  let calculatedPitchBend = 8192;
   if (averageDisplacement > 0.1) {
       const bendAmount = Math.min(1.0, averageDisplacement / maxObservedDistortion) * pitchBendSensitivity;
-      calculatedPitchBend = 8192 + Math.round(bendAmount); // Example: bend upwards
+      calculatedPitchBend = 8192 + Math.round(bendAmount);
       calculatedPitchBend = Math.max(0, Math.min(16383, calculatedPitchBend));
   }
   shape.currentPitchBend = calculatedPitchBend;
@@ -685,33 +667,27 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
   shape.reverbAmount = Math.round(distortionNormalizedForCC * 127);
   shape.delayAmount = Math.round(distortionNormalizedForCC * 127);
 
-  // Map position X to Pan (CC10)
   shape.panValue = Math.max(0, Math.min(127, Math.round((shape.centerX / canvasElement.width) * 127)));
-  // Map number of sides to Brightness (CC74) - example mapping
   const minSidesForBrightness = 3;
-  const maxSidesForBrightness = 20; // Affects sensitivity
+  const maxSidesForBrightness = 20;
   let normalizedSides = (shape.sides - minSidesForBrightness) / (maxSidesForBrightness - minSidesForBrightness);
-  normalizedSides = Math.max(0, Math.min(1, normalizedSides)); // Clamp
-  if (shape.sides === 100) normalizedSides = 0.5; // Circle could be a neutral brightness
+  normalizedSides = Math.max(0, Math.min(1, normalizedSides));
+  if (shape.sides === 100) normalizedSides = 0.5;
   shape.brightnessValue = Math.round(normalizedSides * 127);
 
-
-  // --- MIDI NOTE GENERATION LOGIC (v25 - With Modes) ---
   if (midiEnabled && shape.sides > 0 && performance.now() - shape.lastNotePlayedTime > noteInterval) {
-    // Turn off previous note if in legato mode
     const oldEdgeIndex = shape.currentEdgeIndex;
     if (shape.activeMidiNotes[oldEdgeIndex] && shape.activeMidiNotes[oldEdgeIndex].playing && !staccatoModeActive && currentNoteMode !== 'CHORD') {
         sendMidiNoteOff(shape.activeMidiNotes[oldEdgeIndex].note, shape.midiChannel, shape.id + 1);
         shape.activeMidiNotes[oldEdgeIndex].playing = false;
     }
 
-    // Determine next note index based on mode
-    let edgeIndexToPlay = shape.currentEdgeIndex; // Default for sequential
-    let notesToPlay = []; // Can be multiple for CHORD mode
+    let edgeIndexToPlay = shape.currentEdgeIndex;
+    let notesToPlay = [];
 
     switch (currentNoteMode) {
         case 'SEQUENTIAL':
-        case 'ARPEGGIO': // Arpeggio uses sequential logic for now, but could be more complex (e.g. up/down patterns)
+        case 'ARPEGGIO':
             shape.currentEdgeIndex += shape.rotationDirection;
             if (shape.currentEdgeIndex >= shape.sides) {
                 shape.currentEdgeIndex = Math.max(0, shape.sides - 1);
@@ -726,9 +702,7 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
             }
             break;
         case 'CHORD':
-            // Play a chord based on the currentEdgeIndex as the root of the chord in the scale
-            // For simplicity, let's play root, 3rd, 5th OF THE SCALE
-            shape.currentEdgeIndex += shape.rotationDirection; // Still advance the "trigger"
+            shape.currentEdgeIndex += shape.rotationDirection;
              if (shape.currentEdgeIndex >= shape.sides) {
                 shape.currentEdgeIndex = Math.max(0, shape.sides - 1);
                 shape.rotationDirection = -1;
@@ -740,35 +714,32 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
 
             if (edgeIndexToPlay < shape.sides) {
                 const scale = SCALES[currentScaleName];
-                const rootNoteInScaleIndex = edgeIndexToPlay % scale.notes.length; // Use edgeIndex to pick root from scale
-                
-                notesToPlay.push(getNoteInScale(edgeIndexToPlay)); // Root
-                notesToPlay.push(getNoteInScale(edgeIndexToPlay + 2)); // 3rd in scale (2 steps up)
-                notesToPlay.push(getNoteInScale(edgeIndexToPlay + 4)); // 5th in scale (4 steps up)
-                
-                // Turn off all previously sounding notes for this shape before playing new chord
+                const rootNoteInScaleIndex = edgeIndexToPlay % scale.notes.length;
+
+                notesToPlay.push(getNoteInScale(edgeIndexToPlay));
+                notesToPlay.push(getNoteInScale(edgeIndexToPlay + 2));
+                notesToPlay.push(getNoteInScale(edgeIndexToPlay + 4));
+
                 Object.keys(shape.activeMidiNotes).forEach(idx => {
                     if (shape.activeMidiNotes[idx] && shape.activeMidiNotes[idx].playing) {
                         sendMidiNoteOff(shape.activeMidiNotes[idx].note, shape.midiChannel, shape.id + 1);
                         if(shape.activeMidiNotes[idx].staccatoTimer) clearTimeout(shape.activeMidiNotes[idx].staccatoTimer);
                     }
                 });
-                shape.activeMidiNotes = {}; // Clear old notes
+                shape.activeMidiNotes = {};
             }
             break;
         case 'RANDOM_WALK':
-            // Move to an adjacent note in the scale, or stay
-            let step = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
+            let step = Math.floor(Math.random() * 3) - 1;
             shape.currentEdgeIndex += step;
-            // Wrap around shape.sides (or scale length, depending on desired behavior)
-            const numNotesInCurrentScaleContext = SCALES[currentScaleName].notes.length * 2; // Example: 2 octaves range for random walk
+            const numNotesInCurrentScaleContext = SCALES[currentScaleName].notes.length * 2;
             shape.currentEdgeIndex = (shape.currentEdgeIndex + numNotesInCurrentScaleContext) % numNotesInCurrentScaleContext;
-            
-            edgeIndexToPlay = shape.currentEdgeIndex; // This index is now within the scale context
+
+            edgeIndexToPlay = shape.currentEdgeIndex;
             notesToPlay.push(getNoteInScale(edgeIndexToPlay));
             break;
     }
-    
+
     if (notesToPlay.length > 0) {
         let velocity = Math.max(0, Math.min(127, Math.round(30 + (shape.radius - 30) * ((127-30) / (300-30)))));
         if (isPulsing) {
@@ -778,12 +749,10 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
         }
 
         notesToPlay.forEach((note, i) => {
-            const noteKeyForActive = `${edgeIndexToPlay}_${i}`; // For chords, need unique keys
+            const noteKeyForActive = `${edgeIndexToPlay}_${i}`;
 
-            sendMidiNoteOn(note, velocity, shape.midiChannel, shape.id + 1); // Pass shapeId for OSC
-            // console.log(`v25 MIDI Note ON: Shape ${shape.id}, Ch ${shape.midiChannel}, Note ${note}, Vel ${velocity}, Mode ${currentNoteMode}`);
-            
-            // Clear any old staccato timer for this specific note instance
+            sendMidiNoteOn(note, velocity, shape.midiChannel, shape.id + 1);
+
             if(shape.activeMidiNotes[noteKeyForActive] && shape.activeMidiNotes[noteKeyForActive].staccatoTimer){
                 clearTimeout(shape.activeMidiNotes[noteKeyForActive].staccatoTimer);
             }
@@ -792,49 +761,44 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
                 note: note,
                 channel: shape.midiChannel,
                 lastVelocity: velocity,
-                lastPitchBend: shape.currentPitchBend, // Pitch bend applies to all notes in chord for simplicity
+                lastPitchBend: shape.currentPitchBend,
                 playing: true,
                 staccatoTimer: null
             };
-            
+
             if (staccatoModeActive) {
                 shape.activeMidiNotes[noteKeyForActive].staccatoTimer = setTimeout(() => {
                     if (shape.activeMidiNotes[noteKeyForActive] && shape.activeMidiNotes[noteKeyForActive].playing) {
-                    sendMidiNoteOff(note, shape.midiChannel, shape.id + 1); // Pass shapeId for OSC
+                    sendMidiNoteOff(note, shape.midiChannel, shape.id + 1);
                         shape.activeMidiNotes[noteKeyForActive].playing = false;
                     }
                 }, 150);
             }
         });
-        
+
         if (shape.currentPitchBend !== 8192) { sendPitchBend(shape.currentPitchBend, shape.midiChannel); }
-        // Send all current CCs
         if (shape.reverbAmount !== shape.lastSentReverb) { sendMidiCC(91, shape.reverbAmount, shape.midiChannel); shape.lastSentReverb = shape.reverbAmount; }
         if (shape.delayAmount !== shape.lastSentDelay) { sendMidiCC(94, shape.delayAmount, shape.midiChannel); shape.lastSentDelay = shape.delayAmount; }
         if (shape.panValue !== shape.lastSentPan) { sendMidiCC(10, shape.panValue, shape.midiChannel); shape.lastSentPan = shape.panValue; }
         if (shape.brightnessValue !== shape.lastSentBrightness) { sendMidiCC(74, shape.brightnessValue, shape.midiChannel); shape.lastSentBrightness = shape.brightnessValue; }
-        
+
         shape.lastNotePlayedTime = performance.now();
     }
   }
-  // --- END OF MIDI NOTE GENERATION LOGIC ---
 
-  // Continuous MIDI updates (Pitch Bend and other CCs if they change)
   if (midiEnabled && shape.sides > 0) {
-    let activeNoteFound = false; // Check if any note is actually playing for this shape
+    let activeNoteFound = false;
     Object.values(shape.activeMidiNotes).forEach(noteInfo => {
         if (noteInfo && noteInfo.playing) {
             activeNoteFound = true;
-            if (Math.abs(shape.currentPitchBend - noteInfo.lastPitchBend) > 10) { // Threshold
-                sendPitchBend(shape.currentPitchBend, shape.midiChannel); // Send to the shape's channel
-                // Update lastPitchBend for all active notes of this shape to keep them in sync
+            if (Math.abs(shape.currentPitchBend - noteInfo.lastPitchBend) > 10) {
+                sendPitchBend(shape.currentPitchBend, shape.midiChannel);
                 Object.values(shape.activeMidiNotes).forEach(ni => { if(ni) ni.lastPitchBend = shape.currentPitchBend; });
             }
-            // No need to break, as pitch bend is channel-wide.
         }
     });
 
-    if (activeNoteFound) { // Only send CCs if a note is active and values changed
+    if (activeNoteFound) {
         if (shape.reverbAmount !== shape.lastSentReverb) { sendMidiCC(91, shape.reverbAmount, shape.midiChannel); shape.lastSentReverb = shape.reverbAmount; }
         if (shape.delayAmount !== shape.lastSentDelay) { sendMidiCC(94, shape.delayAmount, shape.midiChannel); shape.lastSentDelay = shape.delayAmount; }
         if (shape.panValue !== shape.lastSentPan) { sendMidiCC(10, shape.panValue, shape.midiChannel); shape.lastSentPan = shape.panValue; }
@@ -842,10 +806,6 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
     }
   }
 
-
-  // Cleanup inactive notes
-  // This logic needs to be robust for chord mode where multiple notes might share a trigger (edgeIndex)
-  // but have unique identifiers in activeMidiNotes (e.g., `${edgeIndexToPlay}_${i}`)
   if (Object.keys(shape.activeMidiNotes).length > 0) {
     Object.keys(shape.activeMidiNotes).forEach(edgeIdxStr => {
         const edgeIdxNum = Number(edgeIdxStr);
@@ -853,28 +813,24 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
         let shouldDelete = false;
 
         if (noteInfo) {
-            if (!noteInfo.playing) { // Already marked as not playing (e.g. staccato ended)
+            if (!noteInfo.playing) {
                 shouldDelete = true;
             } else if (midiEnabled && shape.sides > 0) {
-                // If note's index is now out of bounds due to sides changing
-                // This condition might need adjustment for CHORD or RANDOM_WALK modes if edgeIdxNum isn't directly comparable to shape.sides
                 if (currentNoteMode === 'SEQUENTIAL' || currentNoteMode === 'ARPEGGIO') {
                     if (edgeIdxNum >= shape.sides) {
                         sendMidiNoteOff(noteInfo.note, shape.midiChannel, shape.id + 1);
                         noteInfo.playing = false;
                         shouldDelete = true;
                     }
-                } else if (!noteInfo.playing) { // For other modes, if it's simply not playing anymore
+                } else if (!noteInfo.playing) {
                      shouldDelete = true;
                 }
-                // If the note itself is invalid (e.g. after a scale change), it should also be turned off and deleted.
-                // This is partially handled by turnOffAllActiveNotes on scale/mode change.
-            } else { // MIDI disabled or sides became 0 (relevant for sequential/arpeggio)
+            } else {
                  sendMidiNoteOff(noteInfo.note, shape.midiChannel, shape.id + 1);
                  noteInfo.playing = false;
                  shouldDelete = true;
             }
-            
+
             if (shouldDelete) {
                 if (noteInfo.staccatoTimer) {
                     clearTimeout(noteInfo.staccatoTimer);
@@ -883,7 +839,6 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
             }
         }
     });
-    // If MIDI got disabled globally OR shape has no sides, ensure all notes for this shape are cleared out after sending OFF.
     if (!midiEnabled || (shape.sides <= 0 && (currentNoteMode === 'SEQUENTIAL' || currentNoteMode === 'ARPEGGIO'))) {
         Object.values(shape.activeMidiNotes).forEach(noteInfo => {
             if (noteInfo.playing) {
@@ -898,51 +853,41 @@ function drawShape(shape, isPulsing, pulseValue) { // Added 'shape' parameter
 
 
 function onResults(results) {
-  // console.log("v25 onResults: Called with results", results); // Verification log
   if (!midiEnabled) {
-    // This specific block might be redundant if turnOffAllActiveNotes() is comprehensive
-    // and drawShape handles !midiEnabled correctly.
-    // However, let's ensure notes are off if midiEnabled is toggled.
-    // turnOffAllActiveNotes() is called on 'm' key press.
   }
 
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'; // Trail effect
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
   ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
 
   shapes.forEach(shape => {
     shape.leftHandLandmarks = null;
     shape.rightHandLandmarks = null;
-    // Reset active gesture if conditions are no longer met, or do this after processing all gestures for the frame
-    // For now, let's manage it within each gesture's logic.
   });
 
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    // Simple assignment: first Left/Right to shape 0, second Left/Right to shape 1
     if (operationMode === 'one_person') {
         let firstLeftHand = null;
         let firstRightHand = null;
 
-        // Find the first detected left and right hand
         for (let i = 0; i < results.multiHandLandmarks.length; i++) {
             const landmarks = results.multiHandLandmarks[i];
             const handedness = results.multiHandedness[i] ? results.multiHandedness[i].label : null;
-            drawLandmarks(landmarks); // Draw all detected landmarks
+            drawLandmarks(landmarks);
 
             if (handedness === "Left" && !firstLeftHand) {
                 firstLeftHand = landmarks;
             } else if (handedness === "Right" && !firstRightHand) {
                 firstRightHand = landmarks;
             }
-            if (firstLeftHand && firstRightHand) break; // Optimization: if both found, no need to check further
+            if (firstLeftHand && firstRightHand) break;
         }
 
-        // Assign to both shapes
         shapes[0].leftHandLandmarks = firstLeftHand;
         shapes[0].rightHandLandmarks = firstRightHand;
-        shapes[1].leftHandLandmarks = firstLeftHand; // Same hands for shape 1
+        shapes[1].leftHandLandmarks = firstLeftHand;
         shapes[1].rightHandLandmarks = firstRightHand;
 
-    } else { // two_persons mode (original logic)
+    } else {
         let assignedToShape0L = false;
         let assignedToShape0R = false;
         let assignedToShape1L = false;
@@ -950,7 +895,7 @@ function onResults(results) {
 
         results.multiHandLandmarks.forEach((landmarks, i) => {
             const handedness = results.multiHandedness[i] ? results.multiHandedness[i].label : null;
-            drawLandmarks(landmarks); // Draw all detected landmarks for visual feedback
+            drawLandmarks(landmarks);
 
             if (handedness === "Left") {
                 if (!shapes[0].leftHandLandmarks && !assignedToShape0L) {
@@ -972,21 +917,19 @@ function onResults(results) {
         });
     }
   }
-  
-  shapes.forEach(shape => {
-    // shape.isThumbResizingActive = false; // Reset for current shape's gesture processing - replaced by activeGesture
-    let gestureProcessedThisFrame = false; // Flag to ensure only one gesture logic runs if activeGesture was null
 
-    // Update shape position based on average of assigned wrist landmarks (if any) - SMOOTHING APPLIED
+  shapes.forEach(shape => {
+    let gestureProcessedThisFrame = false;
+
     let wristCount = 0;
     let avgWristX = 0;
     let avgWristY = 0;
-    if (shape.leftHandLandmarks && shape.leftHandLandmarks[0]) { // Wrist is landmark 0
+    if (shape.leftHandLandmarks && shape.leftHandLandmarks[0]) {
         avgWristX += shape.leftHandLandmarks[0].x;
         avgWristY += shape.leftHandLandmarks[0].y;
         wristCount++;
     }
-    if (shape.rightHandLandmarks && shape.rightHandLandmarks[0]) { // Wrist is landmark 0
+    if (shape.rightHandLandmarks && shape.rightHandLandmarks[0]) {
         avgWristX += shape.rightHandLandmarks[0].x;
         avgWristY += shape.rightHandLandmarks[0].y;
         wristCount++;
@@ -997,13 +940,10 @@ function onResults(results) {
         let normY = avgWristY / wristCount;
         let targetCenterX = canvasElement.width - (normX * canvasElement.width);
         let targetCenterY = normY * canvasElement.height;
-        // Apply smoothing to position
-        shape.centerX = shape.centerX * 0.85 + targetCenterX * 0.15; // Increased smoothing
-        shape.centerY = shape.centerY * 0.85 + targetCenterY * 0.15; // Increased smoothing
+        shape.centerX = shape.centerX * 0.85 + targetCenterX * 0.15;
+        shape.centerY = shape.centerY * 0.85 + targetCenterY * 0.15;
     }
 
-    // --- GESTURE PRIORITY & HANDLING ---
-    // 1. RADIUS CONTROL (Thumbs of same user) - Highest Priority
     let isCurrentlyResizing = false;
     if (shape.leftHandLandmarks && shape.rightHandLandmarks) {
         const leftThumbTip = shape.leftHandLandmarks[4];
@@ -1018,7 +958,6 @@ function onResults(results) {
             if (shape.activeGesture === null || shape.activeGesture === 'resize') {
                 if (shape.activeGesture === null) {
                     shape.activeGesture = 'resize';
-                    // console.log(`Shape ${shape.id} gesture: resize START`);
                     if (osc && osc.status() === OSC.STATUS.IS_OPEN) osc.send(new OSC.Message(`/forma/${shape.id + 1}/gestureActivated`, 'resize'));
                 }
                 gestureProcessedThisFrame = true;
@@ -1031,28 +970,24 @@ function onResults(results) {
                 const maxThumbDist = canvasElement.width * 0.35;
                 const normalizedThumbDist = Math.max(0, Math.min(1, (thumbDistancePixels - minThumbDist) / (maxThumbDist - minThumbDist)));
                 let targetRadius = 30 + normalizedThumbDist * 270;
-                const previousRadiusForChord = shape.radius; // Store before smoothing for comparison
-                shape.radius = shape.radius * 0.8 + targetRadius * 0.2; // Smoothing
+                const previousRadiusForChord = shape.radius;
+                shape.radius = shape.radius * 0.8 + targetRadius * 0.2;
 
-                // --- Acorde no Redimensionamento ---
                 const currentTime = performance.now();
                 const radiusDifference = Math.abs(shape.radius - shape.lastResizeRadius);
                 const timeDifference = currentTime - shape.lastResizeTime;
-                const MIN_RADIUS_CHANGE_FOR_CHORD = 10; // pixels
-                const MIN_TIME_BETWEEN_CHORDS_MS = 500; // ms
+                const MIN_RADIUS_CHANGE_FOR_CHORD = 10;
+                const MIN_TIME_BETWEEN_CHORDS_MS = 500;
 
                 if (radiusDifference > MIN_RADIUS_CHANGE_FOR_CHORD && timeDifference > MIN_TIME_BETWEEN_CHORDS_MS) {
                   if (midiEnabled && midiOutput) {
                     const velocity = Math.max(0, Math.min(127, Math.round(30 + (shape.radius - 30) * ((127-30) / (300-30)))));
 
-                    // Usar um índice base para a fundamental do acorde (ex: 0 para a tônica da escala)
-                    // Ou basear na nota atual da forma, se preferível. Por simplicidade, usaremos a base da escala.
-                    // A nota fundamental será a nota base da escala atual, uma oitava acima.
-                    const fundamentalNoteIndex = 0; // Corresponde à primeira nota da 'notes' array na definição da escala
+                    const fundamentalNoteIndex = 0;
 
-                    const fundamental = getNoteInScale(fundamentalNoteIndex, 1); // Oitava +1
-                    const third = getNoteInScale(fundamentalNoteIndex + 2, 1); // Terceira da escala
-                    const fifth = getNoteInScale(fundamentalNoteIndex + 4, 1); // Quinta da escala
+                    const fundamental = getNoteInScale(fundamentalNoteIndex, 1);
+                    const third = getNoteInScale(fundamentalNoteIndex + 2, 1);
+                    const fifth = getNoteInScale(fundamentalNoteIndex + 4, 1);
 
                     const notesToPlay = [fundamental, third, fifth];
                     const CHORD_NOTE_DURATION_MS = 250;
@@ -1063,24 +998,19 @@ function onResults(results) {
                         sendMidiNoteOff(note, shape.midiChannel, shape.id + 1);
                       }, CHORD_NOTE_DURATION_MS);
                     });
-                    // console.log(`Shape ${shape.id} Resize Chord: Notes ${notesToPlay.join(',')} Vel ${velocity}`);
 
                     shape.lastResizeRadius = shape.radius;
                     shape.lastResizeTime = currentTime;
                   }
                 }
-                // --- Fim do Acorde no Redimensionamento ---
             }
         }
     }
     if (shape.activeGesture === 'resize' && !isCurrentlyResizing) {
         shape.activeGesture = null;
-        // console.log(`Shape ${shape.id} gesture: resize END`);
         if (osc && osc.status() === OSC.STATUS.IS_OPEN) osc.send(new OSC.Message(`/forma/${shape.id + 1}/gestureActivated`, 'none'));
     }
 
-
-    // 2. SIDE CONTROL (Left hand pinch of user)
     let isCurrentlyChangingSides = false;
     if (shape.leftHandLandmarks && (shape.activeGesture === null || shape.activeGesture === 'sides') && !gestureProcessedThisFrame) {
         const indexTip = shape.leftHandLandmarks[8];
@@ -1099,7 +1029,6 @@ function onResults(results) {
             isCurrentlyChangingSides = true;
             if (shape.activeGesture === null) {
                 shape.activeGesture = 'sides';
-                // console.log(`Shape ${shape.id} gesture: sides START`);
                 if (osc && osc.status() === OSC.STATUS.IS_OPEN) osc.send(new OSC.Message(`/forma/${shape.id + 1}/gestureActivated`, 'sides'));
             }
             gestureProcessedThisFrame = true;
@@ -1121,22 +1050,19 @@ function onResults(results) {
     }
     if (shape.activeGesture === 'sides' && !isCurrentlyChangingSides) {
         shape.activeGesture = null;
-        // console.log(`Shape ${shape.id} gesture: sides END`);
         if (osc && osc.status() === OSC.STATUS.IS_OPEN) osc.send(new OSC.Message(`/forma/${shape.id + 1}/gestureActivated`, 'none'));
     }
 
-    // 3. VERTEX PULLING (Right hand index finger, if global mode is active)
     let isCurrentlyPulling = false;
     if (vertexPullModeActive && shape.rightHandLandmarks && (shape.activeGesture === null || shape.activeGesture === 'pull') && !gestureProcessedThisFrame) {
         const indexFingertip = shape.rightHandLandmarks[8];
         const fingertipX_canvas = canvasElement.width - (indexFingertip.x * canvasElement.width);
         const fingertipY_canvas = indexFingertip.y * canvasElement.height;
         const pullRadiusThreshold = 30;
-        const fingerId = shape.id + "_idx_pull"; // Unique ID for pulling gesture
+        const fingerId = shape.id + "_idx_pull";
 
-        // Check if already pulling a vertex for this shape with this fingerId
         if (shape.beingPulledByFinger[fingerId] !== undefined) {
-            isCurrentlyPulling = true; // Still pulling the same vertex
+            isCurrentlyPulling = true;
             const vertexIndex = shape.beingPulledByFinger[fingerId];
             const currentDrawingRadius = pulseModeActive ? shape.radius * (1 + 0.25 * Math.sin(pulseTime * pulseFrequency * 2 * Math.PI)) : shape.radius;
             const angle = (vertexIndex / shape.sides) * Math.PI * 2;
@@ -1145,7 +1071,7 @@ function onResults(results) {
             const displacementX = fingertipX_canvas - (shape.centerX + originalVertexX_view);
             const displacementY = fingertipY_canvas - (shape.centerY + originalVertexY_view);
             shape.vertexOffsets[vertexIndex] = { x: displacementX, y: displacementY, fingerId: fingerId };
-        } else { // Attempt to grab a new vertex
+        } else {
             for (let i = 0; i < shape.sides; i++) {
                 const currentDrawingRadius = pulseModeActive ? shape.radius * (1 + 0.25 * Math.sin(pulseTime * pulseFrequency * 2 * Math.PI)) : shape.radius;
                 const angle = (i / shape.sides) * Math.PI * 2;
@@ -1155,7 +1081,6 @@ function onResults(results) {
                 const currentVertexCanvasY = shape.centerY + vertexY_orig_view;
 
                 if (distance(fingertipX_canvas, fingertipY_canvas, currentVertexCanvasX, currentVertexCanvasY) < pullRadiusThreshold) {
-                    // Ensure this vertex is not already pulled by another finger (for future multi-finger pull)
                     let alreadyPulledByOther = Object.values(shape.beingPulledByFinger).includes(i);
                     if (!alreadyPulledByOther) {
                         isCurrentlyPulling = true;
@@ -1168,11 +1093,10 @@ function onResults(results) {
                 }
             }
         }
-        
+
         if (isCurrentlyPulling) {
             if (shape.activeGesture === null) {
                 shape.activeGesture = 'pull';
-                // console.log(`Shape ${shape.id} gesture: pull START`);
                 if (osc && osc.status() === OSC.STATUS.IS_OPEN) osc.send(new OSC.Message(`/forma/${shape.id + 1}/gestureActivated`, 'pull'));
             }
             gestureProcessedThisFrame = true;
@@ -1180,7 +1104,7 @@ function onResults(results) {
     }
     if (shape.activeGesture === 'pull') {
         const fingerId = shape.id + "_idx_pull";
-        if (!isCurrentlyPulling || !vertexPullModeActive) { // If no longer pulling OR global mode turned off
+        if (!isCurrentlyPulling || !vertexPullModeActive) {
             if (shape.beingPulledByFinger[fingerId] !== undefined) {
                 const vertexIndexReleased = shape.beingPulledByFinger[fingerId];
                 if (shape.vertexOffsets[vertexIndexReleased] && shape.vertexOffsets[vertexIndexReleased].fingerId === fingerId) {
@@ -1189,26 +1113,18 @@ function onResults(results) {
                 delete shape.beingPulledByFinger[fingerId];
             }
             shape.activeGesture = null;
-            // console.log(`Shape ${shape.id} gesture: pull END`);
             if (osc && osc.status() === OSC.STATUS.IS_OPEN) osc.send(new OSC.Message(`/forma/${shape.id + 1}/gestureActivated`, 'none'));
         }
     }
 
-
-    // 4. LIQUIFY (Right hand fingertips, if no other gesture is active)
-    // Note: Liquify doesn't have a strong start/end like other gestures, it's more of a continuous influence.
-    // We will set activeGesture to 'liquify' if it's the only potential gesture.
     let isCurrentlyLiquifying = false;
     if (shape.rightHandLandmarks && shape.activeGesture === null && !gestureProcessedThisFrame) {
-        // Check if any fingertip is close enough to potentially cause liquify
-        // This is a simplified check; actual liquify happens in drawShape
         const fingertipsToUse = [4, 8, 12, 16, 20];
-        const maxInfluenceDistance = 150; // From drawShape
+        const maxInfluenceDistance = 150;
         for (const landmarkIndex of fingertipsToUse) {
             const fingertip = shape.rightHandLandmarks[landmarkIndex];
             const fingertipX = canvasElement.width - (fingertip.x * canvasElement.width);
             const fingertipY = fingertip.y * canvasElement.height;
-            // A rough check: if fingertip is within influence range of the shape's bounding box
             if (Math.abs(fingertipX - shape.centerX) < shape.radius + maxInfluenceDistance &&
                 Math.abs(fingertipY - shape.centerY) < shape.radius + maxInfluenceDistance) {
                 isCurrentlyLiquifying = true;
@@ -1217,68 +1133,50 @@ function onResults(results) {
         }
 
         if (isCurrentlyLiquifying) {
-            shape.activeGesture = 'liquify'; // Tentatively set, drawShape will do the work
-            // console.log(`Shape ${shape.id} gesture: liquify POTENTIAL`);
-            // OSC for liquify might be better based on actual distortion, not just potential
+            shape.activeGesture = 'liquify';
             gestureProcessedThisFrame = true;
         }
     }
     if (shape.activeGesture === 'liquify' && !isCurrentlyLiquifying && shape.rightHandLandmarks === null) {
-        // If was liquifying, but no right hand or no longer interacting
         shape.activeGesture = null;
-        // console.log(`Shape ${shape.id} gesture: liquify END`);
-        // No specific OSC end for liquify unless distortion goes to zero.
     }
 
-    // If no gesture was processed and some gesture was active, reset it.
-    // This handles cases where hands disappear while a gesture was active.
     if (!isCurrentlyResizing && !isCurrentlyChangingSides && !isCurrentlyPulling && !isCurrentlyLiquifying && shape.activeGesture !== null) {
-        // console.log(`Shape ${shape.id} gesture: ${shape.activeGesture} END (implicit due to lack of conditions)`);
         if (osc && osc.status() === OSC.STATUS.IS_OPEN) osc.send(new OSC.Message(`/forma/${shape.id + 1}/gestureActivated`, 'none'));
         shape.activeGesture = null;
     }
 
   });
 
-  // Pulse calculation
-  // ... (rest of onResults remains the same for now)
-  let currentPulseValue = 0; // Sin wave from -1 to 1
+  let currentPulseValue = 0;
   if (pulseModeActive) {
-      pulseTime = performance.now() * 0.001; // Time in seconds
+      pulseTime = performance.now() * 0.001;
       currentPulseValue = Math.sin(pulseTime * pulseFrequency * 2 * Math.PI);
-      lastPulseValue = currentPulseValue; // Store for potential use if needed outside
+      lastPulseValue = currentPulseValue;
   }
 
-  // Draw each shape
   shapes.forEach(shape => {
-    // Pass the shape object, whether global pulsing is active, and the current pulse value (-1 to 1)
     drawShape(shape, pulseModeActive, currentPulseValue);
   });
 
   updateHUD();
 
-  // Update output popup window
   if (outputPopupWindow && !outputPopupWindow.closed && popupCanvasCtx) {
     try {
       const popupCanvas = outputPopupWindow.document.getElementById('popupCanvas');
       if (popupCanvas) {
-        // Ensure popup canvas size matches its window
         if (popupCanvas.width !== outputPopupWindow.innerWidth || popupCanvas.height !== outputPopupWindow.innerHeight) {
             popupCanvas.width = outputPopupWindow.innerWidth;
             popupCanvas.height = outputPopupWindow.innerHeight;
         }
-        // Clear with transparency (or match main canvas background)
-        popupCanvasCtx.fillStyle = 'rgba(0, 0, 0, 0.1)'; 
+        popupCanvasCtx.fillStyle = 'rgba(0, 0, 0, 0.1)';
         popupCanvasCtx.fillRect(0, 0, popupCanvas.width, popupCanvas.height);
-        // Draw main canvas content to popup (scaled if necessary)
         popupCanvasCtx.drawImage(canvasElement, 0, 0, popupCanvas.width, popupCanvas.height);
       }
-    } catch (e) { 
-      // console.warn("Error drawing to popup:", e.message); 
-      // Can happen if popup is closed abruptly
+    } catch (e) {
       if (e.name === "InvalidStateError" || (outputPopupWindow && outputPopupWindow.closed)) {
-        popupCanvasCtx = null; 
-        outputPopupWindow = null; // Ensure it's marked as closed
+        popupCanvasCtx = null;
+        outputPopupWindow = null;
       }
     }
   }
@@ -1296,15 +1194,13 @@ if (openOutputPopupButton) {
         outputPopupWindow = null; popupCanvasCtx = null;
       } else {
         outputPopupWindow.document.write('<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Visual Output</title><style>body { margin: 0; overflow: hidden; background: #111; display: flex; justify-content: center; align-items: center; } canvas { display: block; width: 100%; height: 100%; }</style></head><body><canvas id="popupCanvas"></canvas></body></html>');
-        outputPopupWindow.document.close(); // Important to close the document write stream
+        outputPopupWindow.document.close();
 
-        // Wait for the document to be fully loaded before accessing elements
         outputPopupWindow.onload = () => {
             const popupCanvas = outputPopupWindow.document.getElementById('popupCanvas');
             if (popupCanvas) {
               popupCanvasCtx = popupCanvas.getContext('2d');
               try {
-                // Set initial size
                 popupCanvas.width = outputPopupWindow.innerWidth;
                 popupCanvas.height = outputPopupWindow.innerHeight;
               } catch (e) { console.warn("Error setting initial popup canvas size:", e); }
@@ -1313,9 +1209,9 @@ if (openOutputPopupButton) {
               outputPopupWindow.close(); outputPopupWindow = null; popupCanvasCtx = null;
             }
         };
-        
+
         outputPopupWindow.addEventListener('beforeunload', () => {
-          popupCanvasCtx = null; outputPopupWindow = null; // Cleanup
+          popupCanvasCtx = null; outputPopupWindow = null;
         });
       }
     }
@@ -1324,7 +1220,6 @@ if (openOutputPopupButton) {
   console.error("openOutputPopupButton not found.");
 }
 
-// MODIFICATION: updateHUD to show info for both shapes
 function updateHUD() {
   if (hudElement) {
     let hudText = "";
@@ -1335,7 +1230,6 @@ function updateHUD() {
       const posY = Math.round(shape.centerY);
       const leftHandStatus = shape.leftHandLandmarks ? "L:Detectada" : "L:Nenhuma";
       const rightHandStatus = shape.rightHandLandmarks ? "R:Detectada" : "R:Nenhuma";
-      // const resizingStatus = shape.isThumbResizingActive ? "Redimensionando" : "Não Redim."; // Replaced by activeGesture
       const activeGestureDisplay = shape.activeGesture || "Nenhum";
       const pitchBendDisplay = shape.currentPitchBend - 8192;
 
@@ -1362,37 +1256,34 @@ function updateHUD() {
     hudText += `<b>OSC:</b> ${oscStatus}`;
     hudElement.innerHTML = hudText;
 
-    // OSC Sending Logic (Throttled for continuous data)
     const now = performance.now();
     if (osc && osc.status() === OSC.STATUS.IS_OPEN && (now - lastOscSendTime > OSC_SEND_INTERVAL)) {
       lastOscSendTime = now;
       shapes.forEach(shape => {
         const shapeId = shape.id + 1;
-        
+
         osc.send(new OSC.Message(`/forma/${shapeId}/radius`, parseFloat(shape.radius.toFixed(2))));
         osc.send(new OSC.Message(`/forma/${shapeId}/sides`, parseInt(shape.sides)));
-        
+
         const posX_norm = parseFloat((shape.centerX / canvasElement.width).toFixed(3));
         const posY_norm = parseFloat((shape.centerY / canvasElement.height).toFixed(3));
         osc.send(new OSC.Message(`/forma/${shapeId}/pos`, posX_norm, posY_norm));
-        
-        const maxPitchBendRange = 8191; 
+
+        const maxPitchBendRange = 8191;
         const distortionMetric = Math.abs(shape.currentPitchBend - 8192) / maxPitchBendRange;
         osc.send(new OSC.Message(`/forma/${shapeId}/distortion`, parseFloat(distortionMetric.toFixed(3))));
 
         osc.send(new OSC.Message(`/forma/${shapeId}/pitchbend`, parseInt(shape.currentPitchBend)));
-        osc.send(new OSC.Message(`/forma/${shapeId}/cc91`, parseInt(shape.reverbAmount))); // Reverb
-        osc.send(new OSC.Message(`/forma/${shapeId}/cc94`, parseInt(shape.delayAmount)));   // Delay
-        osc.send(new OSC.Message(`/forma/${shapeId}/cc10`, parseInt(shape.panValue)));       // Pan
-        osc.send(new OSC.Message(`/forma/${shapeId}/cc74`, parseInt(shape.brightnessValue)));// Brightness
+        osc.send(new OSC.Message(`/forma/${shapeId}/cc91`, parseInt(shape.reverbAmount)));
+        osc.send(new OSC.Message(`/forma/${shapeId}/cc94`, parseInt(shape.delayAmount)));
+        osc.send(new OSC.Message(`/forma/${shapeId}/cc10`, parseInt(shape.panValue)));
+        osc.send(new OSC.Message(`/forma/${shapeId}/cc74`, parseInt(shape.brightnessValue)));
         osc.send(new OSC.Message(`/forma/${shapeId}/direction`, parseInt(shape.rotationDirection)));
       });
-       // Global parameters OSC
       osc.send(new OSC.Message(`/global/pulseActive`, pulseModeActive ? 1 : 0));
       osc.send(new OSC.Message(`/global/staccatoActive`, staccatoModeActive ? 1 : 0));
       osc.send(new OSC.Message(`/global/vertexPullActive`, vertexPullModeActive ? 1 : 0));
       osc.send(new OSC.Message(`/global/midiEnabled`, midiEnabled ? 1 : 0));
-      // Note: scaleChanged and noteModeChanged are sent when they change, not continuously here.
     }
   }
 }
@@ -1409,7 +1300,7 @@ if (midiToggleButton) {
     midiEnabled = !midiEnabled;
     updateMidiButtonText();
     if (!midiEnabled) {
-        turnOffAllActiveNotes(); // Ensure all notes are turned off when MIDI is disabled
+        turnOffAllActiveNotes();
     }
     updateHUD();
   });
@@ -1424,18 +1315,16 @@ if (operationModeButton) {
             operationMode = 'one_person';
             operationModeButton.textContent = '👤 Modo: 1 Pessoa';
         }
-        // Reset hands on shapes when mode changes to avoid stale assignments
         shapes.forEach(shape => {
             shape.leftHandLandmarks = null;
             shape.rightHandLandmarks = null;
-            shape.activeGesture = null; // Also reset active gesture
+            shape.activeGesture = null;
         });
         console.log("Operation mode changed to:", operationMode);
-        turnOffAllActiveNotes(); // Good practice to reset notes
+        turnOffAllActiveNotes();
         updateHUD();
     });
 }
 
-// Initial HUD update
 updateHUD();
-console.log("main25.js loaded. Attempting to initialize camera and MediaPipe Hands.");
+console.log("main26.js loaded. Attempting to initialize camera and MediaPipe Hands.");

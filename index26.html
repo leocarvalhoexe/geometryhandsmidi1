@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>MIDI Shape Manipulator v25</title>
+  <title>MIDI Shape Manipulator v26</title>
   <style>
     body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
     canvas { display: block; }
-    #info, #settingsButton, #openOutputPopupButton, #midiToggleButton { position: absolute; top: 10px; z-index: 100; padding: 10px; background-color: #444; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+    #info, #settingsButton, #openOutputPopupButton, #midiToggleButton, #operationModeButton { position: absolute; top: 10px; z-index: 100; padding: 10px; background-color: #444; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
     #info { left: 10px; }
     #settingsButton { left: 150px; }
-    #openOutputPopupButton { left: 320px; } /* Adjusted left position */
-    #midiToggleButton { left: 510px; } /* Positioned after Open Output Popup button */
+    #openOutputPopupButton { left: 320px; }
+    #midiToggleButton { left: 510px; }
     #operationModeButton { left: 670px; } /* Positioned after MIDI Toggle button */
     #infoModal, #settingsModal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; }
     .modal-content { background-color: #333; color: #fff; padding: 30px; border-radius: 10px; width: 80%; max-width: 600px; position: relative; max-height: 80vh; overflow-y: auto; }
@@ -49,29 +49,36 @@
   <div id="infoModal">
     <div class="modal-content">
       <span id="closeModal">&times;</span>
-      <h3>Manual do Usuário - v25</h3>
+      <h3>Manual do Usuário - v26</h3>
 
       <h4>Explicação Geral do Projeto</h4>
-      <p>Este projeto (v25) permite a manipulação de <strong>duas formas geométricas independentes</strong> e interativas através dos movimentos das mãos (capturados pela webcam, suportando até duas pessoas) e integra essas interações com a geração de música em tempo real via MIDI.</p>
+      <p>Este projeto (v26) permite a manipulação de <strong>duas formas geométricas independentes</strong> e interativas através dos movimentos das mãos (capturados pela webcam, suportando uma ou duas pessoas) e integra essas interações com a geração de música em tempo real via MIDI.</p>
+      <p><strong>Novidades v26:</strong> Acordes ao redimensionar e seleção de modo de operação (1 ou 2 pessoas).</p>
 
       <h4>Integração MIDI</h4>
       <p>O sistema utiliza a API Web MIDI do navegador para enviar mensagens MIDI. Cada forma possui seu próprio canal MIDI.</p>
       <ul>
         <li>As notas são geradas sequencialmente para cada forma, com direção de rotação reversível.</li>
         <li>O número de lados da forma determina a quantidade de notas na sequência.</li>
-        <li>As notas são mapeadas para uma escala harmônica (pentatônica).</li>
+        <li>As notas são mapeadas para uma escala harmônica.</li>
         <li>O tamanho da forma (raio) controla a intensidade (velocity) das notas: formas maiores produzem notas mais fortes.</li>
+        <li><strong>Novo:</strong> Ao redimensionar uma forma significativamente, um acorde de três notas (fundamental, terça, quinta da escala atual) é tocado.</li>
         <li>A distorção global da forma (calculada a partir das interações) afeta o pitch bend da nota atualmente tocada por aquela forma.</li>
         <li>As notas são geradas em loop enquanto a forma estiver visível (modo Legato) ou com curta duração (modo Staccato).</li>
         <li>O modo Pulso modula ritmicamente a velocidade das notas e o tamanho visual das formas.</li>
       </ul>
 
-      <h4>Manipulação das Formas com as Mãos (até 2 pessoas)</h4>
-      <p>Cada pessoa pode controlar uma forma. A primeira pessoa detectada controla a Forma 1, a segunda a Forma 2.</p>
+      <h4>Manipulação das Formas com as Mãos</h4>
+      <p>O sistema pode operar em modo de <strong>1 Pessoa</strong> ou <strong>2 Pessoas</strong> (selecionável via botão "Modo").</p>
       <ul>
-        <li><strong>Redimensionamento do Raio:</strong> Use os polegares das duas mãos associadas à forma. Aproxime ou afaste os polegares (com os outros dedos fechados) para diminuir ou aumentar o tamanho da forma.</li>
-        <li><strong>Número de Lados:</strong> Com a mão esquerda associada à forma, faça um gesto de pinça (polegar e indicador). A distância entre os dedos da pinça, quando próxima à borda da forma, altera o número de lados. Este controle funciona quando o redimensionamento com os dois polegares não está ativo para a forma.</li>
-        <li><strong>Distorção (Liquify):</strong> Com a mão direita associada à forma, aproxime os dedos da borda da forma para distorcer o contorno. Este controle funciona quando o redimensionamento com os dois polegares não está ativo para a forma e o modo "Puxar Vértices" está desativado.</li>
+        <li><strong>Modo 1 Pessoa:</strong> Ambas as formas respondem às mãos da mesma pessoa.</li>
+        <li><strong>Modo 2 Pessoas:</strong> Cada pessoa controla uma forma (Forma 1 pela primeira pessoa detectada, Forma 2 pela segunda).</li>
+      </ul>
+      <p>Gestos de controle:</p>
+      <ul>
+        <li><strong>Redimensionamento do Raio:</strong> Use os polegares das duas mãos associadas à forma. Aproxime ou afaste os polegares (com os outros dedos fechados) para diminuir ou aumentar o tamanho da forma. Dispara um acorde se a mudança for significativa.</li>
+        <li><strong>Número de Lados:</strong> Com a mão esquerda associada à forma, faça um gesto de pinça (polegar e indicador). A distância entre os dedos da pinça, quando próxima à borda da forma, altera o número de lados.</li>
+        <li><strong>Distorção (Liquify):</strong> Com a mão direita associada à forma, aproxime os dedos da borda da forma para distorcer o contorno.</li>
         <li><strong>Puxar Vértices:</strong> Com o modo "Puxar Vértices" ativo (tecla V), use o dedo indicador da mão direita associada à forma para "agarrar" e puxar vértices individuais da forma.</li>
       </ul>
 
@@ -81,8 +88,9 @@
         <li><strong>P:</strong> Ativa ou desativa o Modo Pulso globalmente.</li>
         <li><strong>L:</strong> Alterna entre modo Staccato e Legato para as notas MIDI.</li>
         <li><strong>V:</strong> Ativa ou desativa o modo "Puxar Vértices".</li>
-        <li><strong>+ (sinal de mais):</strong> Aumenta o raio da Forma 1 (para depuração ou se não houver mãos).</li>
-        <li><strong>- (sinal de menos):</strong> Diminui o raio da Forma 1 (para depuração ou se não houver mãos).</li>
+        <li><strong>S:</strong> Cicla entre as escalas musicais disponíveis.</li>
+        <li><strong>N:</strong> Cicla entre os modos de geração de nota (Sequencial, Arpejo, etc.).</li>
+        <li><strong>Botão "Modo":</strong> Alterna entre operação para 1 pessoa ou 2 pessoas.</li>
       </ul>
 
       <div class="modal-footer">
@@ -112,8 +120,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js"></script> 
-  <script src="main25.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js"></script>
+  <script src="main26.js" defer></script>
   <div id="hud"></div>
 </body>
 </html>
