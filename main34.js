@@ -9,6 +9,41 @@ let ctx = canvasElement.getContext('2d');
 
 let hasWebGL2 = false; // Will be checked
 
+// Forward declaration of Shape class
+class Shape {
+  constructor(id, midiChannel) {
+    this.id = id;
+    // Ensure canvasElement is valid before accessing width/height
+    this.centerX = canvasElement ? canvasElement.width / (this.id === 0 ? 4 : 1.333) : 320;
+    this.centerY = canvasElement ? canvasElement.height / 2 : 240;
+    this.radius = 100;
+    this.sides = 100; // 100 = círculo
+    this.distortionFactor = 0; // Not actively used, but could be for presets
+    this.activeMidiNotes = {};
+    this.midiChannel = midiChannel;
+    this.leftHandLandmarks = null;
+    this.rightHandLandmarks = null;
+    this.pinchDistance = 0; // Potentially for gesture detection refinement
+    this.lastSideChangeTime = 0;
+    this.activeGesture = null;
+    this.currentPitchBend = 8192;
+    this.reverbAmount = 0; this.delayAmount = 0; this.panValue = 64;
+    this.brightnessValue = 64; this.modWheelValue = 0; this.resonanceValue = 0;
+    this.lastSentReverb = -1; this.lastSentDelay = -1; this.lastSentPan = -1;
+    this.lastSentBrightness = -1; this.lastSentModWheel = -1; this.lastSentResonance = -1;
+    this.vertexOffsets = {};
+    this.beingPulledByFinger = {};
+    this.rotationDirection = 1;
+    this.currentEdgeIndex = 0;
+    this.lastNotePlayedTime = 0;
+    this.lastResizeRadius = this.radius;
+    this.lastResizeTime = 0;
+    this.lastSentActiveGesture = null;
+    this.arpeggioDirection = 1;
+    this.lastArpeggioNotePlayedTime = 0;
+  }
+}
+
 const shapes = [new Shape(0, 0), new Shape(1, 1)]; // Shape instances
 
 let operationMode = 'two_persons';
@@ -30,7 +65,7 @@ let externalBPM = null;
 
 let osc; // OSC instance
 let oscStatus = "OSC Desconectado";
-const OSC_HOST = 'localhost';
+const OSC_HOST = location.hostname;
 const OSC_PORT = 8080;
 let lastOscSendTime = 0;
 const OSC_SEND_INTERVAL = 100; // ms
@@ -432,8 +467,14 @@ function processShapeNotes(shape, isPulsing, pulseValue) {
 async function initializeCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
-    videoElement.srcObject = stream;
-    videoElement.onloadedmetadata = () => videoElement.play();
+    if (videoElement) {
+      videoElement.srcObject = stream;
+      videoElement.onloadedmetadata = () => videoElement.play();
+    } else {
+      console.error("videoElement não encontrado no DOM.");
+      cameraError = true; // Set cameraError if videoElement is missing
+      // No need to call drawFallbackAnimation here as the onFrame logic in Camera setup will handle it
+    }
 
     const handsInstance = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
     handsInstance.setOptions({ maxNumHands: 4, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
@@ -1261,7 +1302,7 @@ function setupEventListeners() {
     if (playOSCLoopButton) playOSCLoopButton.addEventListener('click', playRecordedOSCLoop);
     if (spectatorModeButton) spectatorModeButton.addEventListener('click', toggleSpectatorMode);
     if (openOutputPopupButton) openOutputPopupButton.addEventListener('click', openPopup);
-    // if (resetMidiButton) resetMidiButton.addEventListener('click', resetMidiSystem); // Already in toggle list if exists
+    if (resetMidiButton) resetMidiButton.addEventListener('click', resetMidiSystem);
     if (scaleCycleButton) scaleCycleButton.addEventListener('click', cycleScale);
     if (themeToggleButton) themeToggleButton.addEventListener('click', toggleTheme);
     if (gestureSimToggleButton) gestureSimToggleButton.addEventListener('click', toggleGestureSimulation);

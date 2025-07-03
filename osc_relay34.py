@@ -145,8 +145,8 @@ async def main():
 
 
     # Configura e inicia o servidor WebSocket
-    ws_server = await websockets.serve(websocket_handler, "localhost", WEBSOCKET_PORT)
-    print(f"Relay WebSocket (ws://localhost:{WEBSOCKET_PORT}) <=> OSC UDP (Tx: {TD_IP}:{TD_PORT}, Rx: {UDP_LISTEN_IP}:{UDP_LISTEN_PORT}) rodando.")
+    ws_server = await websockets.serve(websocket_handler, "0.0.0.0", WEBSOCKET_PORT)
+    print(f"Relay WebSocket (ws://0.0.0.0:{WEBSOCKET_PORT}) <=> OSC UDP (Tx: {TD_IP}:{TD_PORT}, Rx: {UDP_LISTEN_IP}:{UDP_LISTEN_PORT}) rodando.")
 
     await ws_server.wait_closed() # Mantém o servidor WebSocket rodando
     transport.close() # Fecha o servidor UDP ao finalizar
