@@ -54,7 +54,6 @@ let pulseFrequency = 0.5;
 let midiEnabled = true;
 let staccatoModeActive = false;
 let vertexPullModeActive = false;
-const maxPolyphony = 12;
 let chordMode = "TRIAD";
 
 let currentArpeggioStyle = "UP";
@@ -220,38 +219,6 @@ function getNoteName(midiNote) {
 
 
 // === SHAPE ENGINE ===
-class Shape {
-  constructor(id, midiChannel) {
-    this.id = id;
-    this.centerX = canvasElement.width / (this.id === 0 ? 4 : 1.333);
-    this.centerY = canvasElement.height / 2;
-    this.radius = 100;
-    this.sides = 100; // 100 = círculo
-    this.distortionFactor = 0; // Not actively used, but could be for presets
-    this.activeMidiNotes = {};
-    this.midiChannel = midiChannel;
-    this.leftHandLandmarks = null;
-    this.rightHandLandmarks = null;
-    this.pinchDistance = 0; // Potentially for gesture detection refinement
-    this.lastSideChangeTime = 0;
-    this.activeGesture = null;
-    this.currentPitchBend = 8192;
-    this.reverbAmount = 0; this.delayAmount = 0; this.panValue = 64;
-    this.brightnessValue = 64; this.modWheelValue = 0; this.resonanceValue = 0;
-    this.lastSentReverb = -1; this.lastSentDelay = -1; this.lastSentPan = -1;
-    this.lastSentBrightness = -1; this.lastSentModWheel = -1; this.lastSentResonance = -1;
-    this.vertexOffsets = {};
-    this.beingPulledByFinger = {};
-    this.rotationDirection = 1;
-    this.currentEdgeIndex = 0;
-    this.lastNotePlayedTime = 0;
-    this.lastResizeRadius = this.radius;
-    this.lastResizeTime = 0;
-    this.lastSentActiveGesture = null;
-    this.arpeggioDirection = 1;
-    this.lastArpeggioNotePlayedTime = 0;
-  }
-}
 
 function drawShape(shape, isPulsing, pulseValue) {
   ctx.beginPath();
