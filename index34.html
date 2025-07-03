@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIDI Shape Manipulator v34</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; color: #eee; }
+    #controlsContainer { display: flex; flex-wrap: wrap; padding: 6px 4px; background-color: #1a1a1a; z-index: 100; justify-content: flex-start; align-items: center; border-bottom: 1px solid #333;}
+    .control-button { margin: 4px; padding: 7px 11px; background-color: #383838; color: #ddd; border: 1px solid #555; border-radius: 5px; cursor: pointer; font-size: 13px; white-space: nowrap; transition: background-color 0.2s, color 0.2s; }
+    .control-button:hover { background-color: #4a4a4a; color: white; }
+    .control-button:active { background-color: #555; }
+    .control-button:disabled { background-color: #2a2a2a; color: #777; border-color: #444; cursor: not-allowed;}
+    .control-button.active { background-color: #007bff; color: white; border-color: #0056b3;}
+
+    #mainCanvasContainer { flex-grow: 1; position: relative; background-color: #000; }
+    canvas#canvas { display: block; width: 100%; height: 100%; }
+
+    .modal-overlay { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.78); z-index: 1000; justify-content: center; align-items: center; padding: 15px; box-sizing: border-box;}
+    .modal-content { background-color: #282c34; color: #abb2bf; padding: 25px; border-radius: 8px; width: 95%; max-width: 750px; position: relative; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 25px rgba(0,0,0,0.5); border: 1px solid #3e4451; }
+    .modal-content h3 { margin-top: 0; border-bottom: 1px solid #3e4451; padding-bottom: 12px; color: #61afef; font-size: 1.4em; }
+    .modal-content p, .modal-content ul, .modal-content label { line-height: 1.65; color: #abb2bf; font-size: 0.95em; }
+    .modal-content ul { padding-left: 20px; }
+    .modal-content li { margin-bottom: 6px;}
+    .modal-content strong { color: #e5c07b; }
+    .modal-content code { background-color: #3a3f4b; padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; color: #d19a66;}
+    .modal-content a { color: #61afef; text-decoration: none; }
+    .modal-content a:hover { text-decoration: underline; }
+    .close-modal-button { position: absolute; top: 12px; right: 18px; font-size: 28px; cursor: pointer; color: #777; background: none; border: none; line-height: 1; padding: 5px;}
+    .close-modal-button:hover { color: #ccc; }
+    .modal-footer { margin-top: 25px; padding-top: 18px; border-top: 1px solid #3e4451; text-align: center; font-size: 0.8em; color: #777;}
+
+    .modal-content label { display: block; margin-top: 15px; margin-bottom: 5px; font-weight: 600; color: #98c379;}
+    .modal-content select, .modal-content input[type="range"], .modal-content input[type="number"], .modal-content input[type="text"], .modal-content textarea {
+      width: calc(100% - 20px); padding: 10px; margin-top: 5px; border-radius: 4px;
+      border: 1px solid #3e4451; background-color: #21252b; color: #abb2bf; font-size: 0.95em;
+      box-sizing: border-box;
+    }
+    .modal-content input[type="range"] { padding-left:0; padding-right:0; height: auto;}
+    .modal-content textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
+    .modal-content .value-display { margin-left: 10px; font-size: 0.9em; color: #61afef; }
+    .modal-content .button-group { margin-top: 18px; display: flex; gap: 12px;}
+    .modal-content .button-group button {flex-grow: 1; padding: 10px 15px; font-size: 0.95em;}
+    .modal-content hr { border: 0; height: 1px; background-color: #3e4451; margin: 25px 0; }
+
+    #hud {
+      position: fixed;
+      bottom: 8px;
+      left: 8px;
+      background-color: rgba(20, 22, 28, 0.85);
+      color: #c8ccd4;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      z-index: 999;
+      max-width: calc(100% - 16px);
+      line-height: 1.55;
+      border: 1px solid #333842;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    #hud b { color: #61afef; }
+    #hud span.highlight { color: #e5c07b; }
+    #hud span.status-ok { color: #98c379; }
+    #hud span.status-error { color: #e06c75; }
+    #hud span.status-warn { color: #d19a66; }
+
+    /* Specific styles for active buttons based on their function */
+    #recordOSCButton.active { background-color: #e06c75; border-color: #c05c65;} /* Red for recording */
+    #playOSCLoopButton.active { background-color: #e5c07b; border-color: #c5a05b; color: #282c34;} /* Yellow/Orange for playing */
+    #syncDMXNotesButton.active, #midiFeedbackToggleButton.active, #spectatorModeButton.active { background-color: #56b6c2; border-color: #3696a2; color: white;} /* Teal/Cyan for active modes */
+
+    /* --- Theme Styles --- */
+    /* Dark Theme (Default) */
+    body.theme-dark { background-color: #111; color: #eee; }
+    .theme-dark #controlsContainer { background-color: #1a1a1a; border-bottom: 1px solid #333; }
+    .theme-dark .control-button { background-color: #383838; color: #ddd; border: 1px solid #555; }
+    .theme-dark .control-button:hover { background-color: #4a4a4a; color: white; }
+    .theme-dark .control-button:active { background-color: #555; }
+    .theme-dark .control-button:disabled { background-color: #2a2a2a; color: #777; border-color: #444; }
+    .theme-dark .control-button.active { background-color: #007bff; color: white; border-color: #0056b3; } /* Default active, can be overridden */
+    .theme-dark #recordOSCButton.active { background-color: #e06c75; border-color: #c05c65; color:white;}
+    .theme-dark #playOSCLoopButton.active { background-color: #e5c07b; border-color: #c5a05b; color: #282c34;}
+    .theme-dark #syncDMXNotesButton.active, .theme-dark #midiFeedbackToggleButton.active, .theme-dark #spectatorModeButton.active { background-color: #56b6c2; border-color: #3696a2; color: white;}
+    .theme-dark #mainCanvasContainer { background-color: #000; }
+    .theme-dark .modal-overlay { background-color: rgba(0,0,0,0.78); }
+    .theme-dark .modal-content { background-color: #282c34; color: #abb2bf; border: 1px solid #3e4451; box-shadow: 0 8px 25px rgba(0,0,0,0.5); }
+    .theme-dark .modal-content h3 { border-bottom: 1px solid #3e4451; color: #61afef; }
+    .theme-dark .modal-content p, .theme-dark .modal-content ul, .theme-dark .modal-content label { color: #abb2bf; }
+    .theme-dark .modal-content strong { color: #e5c07b; }
+    .theme-dark .modal-content code { background-color: #3a3f4b; color: #d19a66; }
+    .theme-dark .modal-content a { color: #61afef; }
+    .theme-dark .close-modal-button { color: #777; }
+    .theme-dark .close-modal-button:hover { color: #ccc; }
+    .theme-dark .modal-footer { border-top: 1px solid #3e4451; color: #777;}
+    .theme-dark .modal-content label { color: #98c379;} /* This was specific, keeping it for now */
+    .theme-dark .modal-content select, .theme-dark .modal-content input[type="range"], .theme-dark .modal-content input[type="number"], .theme-dark .modal-content input[type="text"], .theme-dark .modal-content textarea {
+      border: 1px solid #3e4451; background-color: #21252b; color: #abb2bf;
+    }
+    .theme-dark .modal-content .value-display { color: #61afef; }
+    .theme-dark .modal-content hr { background-color: #3e4451; }
+    .theme-dark #hud { background-color: rgba(20, 22, 28, 0.85); color: #c8ccd4; border: 1px solid #333842; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+    .theme-dark #hud b { color: #61afef; }
+    .theme-dark #hud span.highlight { color: #e5c07b; }
+    .theme-dark #hud span.status-ok { color: #98c379; }
+    .theme-dark #hud span.status-error { color: #e06c75; }
+    .theme-dark #hud span.status-warn { color: #d19a66; }
+
+    /* Light Theme */
+    body.theme-light { background-color: #f4f4f8; color: #333; }
+    .theme-light #controlsContainer { background-color: #e0e0e6; border-bottom: 1px solid #c0c0c8; }
+    .theme-light .control-button { background-color: #ccc; color: #333; border: 1px solid #aaa; }
+    .theme-light .control-button:hover { background-color: #bbb; color: #000; }
+    .theme-light .control-button:active { background-color: #aaa; }
+    .theme-light .control-button:disabled { background-color: #ddd; color: #999; border-color: #ccc; }
+    .theme-light .control-button.active { background-color: #007bff; color: white; border-color: #0056b3; } /* Default active */
+    .theme-light #recordOSCButton.active { background-color: #e06c75; border-color: #c05c65; color:white;}
+    .theme-light #playOSCLoopButton.active { background-color: #e5c07b; border-color: #c5a05b; color: #282c34;}
+    .theme-light #syncDMXNotesButton.active, .theme-light #midiFeedbackToggleButton.active, .theme-light #spectatorModeButton.active { background-color: #56b6c2; border-color: #3696a2; color: white;}
+    .theme-light #mainCanvasContainer { background-color: #e8e8ee; } /* Slightly off-white for canvas background */
+    .theme-light .modal-overlay { background-color: rgba(50,50,50,0.6); }
+    .theme-light .modal-content { background-color: #fdfdff; color: #333; border: 1px solid #ccc; box-shadow: 0 6px 20px rgba(0,0,0,0.2); }
+    .theme-light .modal-content h3 { border-bottom: 1px solid #ddd; color: #0056b3; }
+    .theme-light .modal-content p, .theme-light .modal-content ul, .theme-light .modal-content label { color: #333; }
+    .theme-light .modal-content strong { color: #c678dd; } /* Adjusted for light theme */
+    .theme-light .modal-content code { background-color: #e8e8f0; color: #d19a66; border: 1px solid #ddd;}
+    .theme-light .modal-content a { color: #007bff; }
+    .theme-light .close-modal-button { color: #aaa; }
+    .theme-light .close-modal-button:hover { color: #777; }
+    .theme-light .modal-footer { border-top: 1px solid #ddd; color: #555;}
+    .theme-light .modal-content label { color: #28a745;} /* Adjusted for light theme */
+    .theme-light .modal-content select, .theme-light .modal-content input[type="range"], .theme-light .modal-content input[type="number"], .theme-light .modal-content input[type="text"], .theme-light .modal-content textarea {
+      border: 1px solid #ccc; background-color: #fff; color: #333;
+    }
+    .theme-light .modal-content .value-display { color: #007bff; }
+    .theme-light .modal-content hr { background-color: #ddd; }
+    .theme-light #hud { background-color: rgba(230, 230, 240, 0.9); color: #333; border: 1px solid #b0b0c0; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .theme-light #hud b { color: #0056b3; }
+    .theme-light #hud span.highlight { color: #c678dd; }
+    .theme-light #hud span.status-ok { color: #28a745; }
+    .theme-light #hud span.status-error { color: #dc3545; }
+    .theme-light #hud span.status-warn { color: #fd7e14; }
+
+  </style>
+</head>
+<body class="theme-dark"> <!-- Start with dark theme by default -->
+  <div id="controlsContainer">
+    <button id="info" class="control-button" title="Manual do Usuário (Shift+I)">ℹ️ Manual</button>
+    <button id="settingsButton" class="control-button" title="Configurações MIDI e Feedback (Shift+C)">⚙️ Config</button>
+    <button id="arpeggioSettingsButton" class="control-button" title="Configurações do Arpejador (Shift+A)">🎼 Arpejo</button>
+    <button id="oscPanelButton" class="control-button" title="Painel de Controle OSC (Shift+O)">📡 Painel OSC</button>
+    <button id="scaleCycleButton" class="control-button" title="Mudar Escala Musical (S)">🧬 Escala: PENT. MAIOR</button> <!-- New Scale Button -->
+    <button id="openOutputPopupButton" class="control-button" title="Abrir Janela de Saída Visual">↗️ Janela</button>
+    <button id="midiToggleButton" class="control-button" title="Ativar/Desativar Envio MIDI (M)">🎹 MIDI ON</button>
+    <button id="resetMidiButton" class="control-button" title="Resetar Sistema MIDI">🔄 Reset MIDI</button>
+    <button id="operationModeButton" class="control-button" title="Alternar Modo 1 ou 2 Pessoas">👤 Modo: 2 Pessoas</button>
+    <button id="syncDMXNotesButton" class="control-button" title="Sincronizar Notas MIDI como OSC para DMX (Shift+D)">🎶 Sync DMX OFF</button>
+    <button id="midiFeedbackToggleButton" class="control-button" title="Ativar/Desativar Feedback MIDI para OSC (Shift+F)">🎤 MIDI In OFF</button>
+    <button id="recordOSCButton" class="control-button" title="Gravar/Parar Gravação de Loop OSC (Shift+R)">⏺️ Gravar OSC</button>
+    <button id="playOSCLoopButton" class="control-button" disabled title="Tocar/Parar Loop OSC Gravado (Shift+P)">▶️ Loop OSC</button>
+    <button id="spectatorModeButton" class="control-button" title="Ativar/Desativar Modo Espectador (Shift+S)">👓 Espectador OFF</button>
+    <button id="shapePresetButton" class="control-button" title="Gerenciar Presets de Formas (Shift+B)">💾 Presets</button> <!-- Shortcut Alterado para Shift+B -->
+    <button id="themeToggleButton" class="control-button" title="Alternar Tema Claro/Escuro (Shift+T)">🌙</button>
+    <button id="gestureSimToggleButton" class="control-button" title="Simular Gestos (Dev Mode)">🤖 Sim OFF</button>
+  </div>
+
+  <div id="mainCanvasContainer">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="arpeggioSettingsModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeArpeggioSettingsModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Configurações de Arpejo</h3>
+      <label for="arpeggioStyleSelect">Estilo de Arpejo:</label>
+      <select id="arpeggioStyleSelect"></select>
+      <label for="arpeggioBPM">Velocidade (BPM): <span id="arpeggioBPMValue" class="value-display">120</span></label>
+      <input type="range" id="arpeggioBPM" min="30" max="300" value="120">
+      <label for="noteIntervalSlider">Intervalo entre Notas (ms): <span id="noteIntervalValue" class="value-display">500</span></label>
+      <input type="range" id="noteIntervalSlider" min="50" max="2000" value="500">
+      <div class="modal-footer"><p>Configurações de arpejo são aplicadas em tempo real.</p></div>
+    </div>
+  </div>
+
+  <div id="infoModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Manual do Usuário - v33</h3>
+
+      <h4>Novidades da v33</h4>
+      <ul>
+        <li><strong>Suporte a Mensagens OSC Binárias:</strong> O servidor Python (`osc_relay33.py`) agora decodifica e retransmite mensagens OSC binárias recebidas via WebSocket, além das mensagens JSON. Isso permite maior compatibilidade com softwares que enviam OSC em formato binário nativo.</li>
+        <li><strong>HUD Funcional:</strong> A Heads-Up Display (HUD) na parte inferior da tela agora exibe o status "Sistema iniciado..." e outras mensagens relevantes do sistema.</li>
+        <li><strong>Painel OSC e Config Operacionais:</strong> Os modais de Configurações (para MIDI) e Painel OSC (para envio de testes e logs) estão completamente funcionais e integrados.</li>
+        <li><strong>Inicialização Automática:</strong> O sistema agora é carregado automaticamente quando a página é aberta (`window.onload`), inicializando MIDI, OSC, eventos e câmera.</li>
+        <li><strong>Importação Correta do osc-js:</strong> A biblioteca `osc-js` está corretamente importada, garantindo a funcionalidade de comunicação OSC no lado do cliente.</li>
+      </ul>
+      <hr>
+      <h4>Visão Geral - Novidades v32</h4>
+      <p>Esta versão (v32) inclui correções cruciais de inicialização e melhorias de usabilidade e persistência de dados sobre a v31:</p>
+      <ul>
+        <li><strong>Botão "Sync DMX Notes":</strong> Espelha notas MIDI (internas ou externas via feedback) como mensagens OSC <code>/dmx/note &lt;nota&gt; &lt;velocidade&gt;</code>.</li>
+        <li><strong>Gravador/Reprodutor de Loop OSC:</strong> Botões para gravar uma sequência de mensagens OSC enviadas e reproduzi-las em loop com duração configurável.</li>
+        <li><strong>Recebimento de BPM Externo:</strong> Handler OSC <code>/global/setExternalBPM &lt;bpm&gt;</code> para sincronizar o tempo do arpejo com softwares externos.</li>
+        <li><strong>Feedback MIDI para OSC:</strong> Encaminha notas e CCs MIDI recebidos de dispositivos externos como mensagens OSC (<code>/midi/in/noteOn</code>, <code>/midi/in/cc</code>, etc.).</li>
+        <li><strong>Painel de Teste OSC:</strong> Interface para enviar mensagens OSC manualmente e visualizar logs.</li>
+        <li><strong>Modo "Spectator":</strong> Visualiza as interações sem permitir controle manual, ideal para instalações.</li>
+        <li><strong>Correção no Servidor Python:</strong> <code>osc_relay30.py</code> agora lida corretamente com mensagens binárias OSC enviadas pelo navegador via WebSocket, além de JSON.</li>
+        <li><strong>Melhorias na Interface:</strong> Botões reorganizados, tooltips e estilo visual atualizado.</li>
+      </ul>
+      <p>Mantém todas as funcionalidades da v29, como controle de formas, modos de nota, MIDI, OSC, etc.</p>
+
+      <h4>Controles e Botões Adicionais (v30)</h4>
+      <ul>
+        <li><strong>Sync DMX Notes:</strong> (Barra de Controles) Ativa/desativa o envio de mensagens <code>/dmx/note</code>.</li>
+        <li><strong>Gravar Loop OSC / Tocar Loop OSC:</strong> (Barra de Controles) Controlam a gravação e reprodução de sequências OSC. A duração do loop pode ser definida no Painel OSC.</li>
+        <li><strong>Modo Espectador:</strong> (Barra de Controles) Alterna o modo de visualização passiva.</li>
+        <li><strong>MIDI In (Feedback):</strong> (Barra de Controles) Ativa/desativa o encaminhamento de MIDI In para OSC. A porta de entrada é selecionada em ⚙️ Config.</li>
+        <li><strong>Painel OSC (Botão "📡 Painel OSC"):</strong> Abre um modal para:
+            <ul>
+                <li>Enviar mensagens OSC customizadas (endereço, argumentos).</li>
+                <li>Configurar a duração do loop OSC gravado.</li>
+                <li>Visualizar um log de mensagens OSC (enviadas pelo painel/loop, recebidas via UDP).</li>
+            </ul>
+        </li>
+      </ul>
+
+      <h4>Comunicação OSC (Adições v30)</h4>
+      <p>Novas mensagens OSC enviadas pelo sistema:</p>
+      <ul>
+        <li><code>/dmx/note &lt;nota_midi&gt; &lt;velocidade&gt;</code>: Enviada quando "Sync DMX Notes" está ativo.</li>
+        <li><code>/midi/in/noteOn &lt;canal&gt; &lt;nota&gt; &lt;velocidade&gt;</code></li>
+        <li><code>/midi/in/noteOff &lt;canal&gt; &lt;nota&gt;</code></li>
+        <li><code>/midi/in/cc &lt;canal&gt; &lt;numero_cc&gt; &lt;valor_cc&gt;</code></li>
+        <li><code>/midi/in/pitchbend &lt;canal&gt; &lt;valor_bend_14bit&gt;</code></li>
+        <li><code>/global/state/dmxSyncMode &lt;0|1&gt;</code></li>
+        <li><code>/global/state/midiFeedbackEnabled &lt;0|1&gt;</code></li>
+      </ul>
+      <p>Novas mensagens OSC recebidas pelo sistema:</p>
+      <ul>
+        <li><code>/global/setExternalBPM &lt;bpm_float_ou_int&gt;</code>: Define o BPM do arpejo. Enviar 0 ou nulo para desativar.</li>
+      </ul>
+      <p>O script <code>osc_relay30.py</code> foi atualizado para lidar com mensagens binárias OSC e JSON do navegador.</p>
+
+      <h4>Funcionalidades da v29 (Resumo Mantido)</h4>
+      <p>Manipulação de formas, geração MIDI (escalas, modos Sequencial/Arpejo/Acorde, Staccato/Pulso), controle de efeitos (Pitch Bend, Reverb, Delay, Pan, Brilho, ModWheel, Resonance), modo 1 ou 2 pessoas, janela de saída visual, configurações MIDI, e comunicação OSC básica com <code>osc_relay</code>.</p>
+      <p><strong>Teclas de Atalho Principais:</strong></p>
+      <ul>
+          <li><strong>M:</strong> MIDI On/Off</li>
+          <li><strong>P:</strong> Ativar/Desativar Modo Pulso (Não confundir com Shift+P para Loop OSC)</li>
+          <li><strong>L:</strong> Staccato/Legato</li>
+          <li><strong>S:</strong> Ciclar Escalas (Não confundir com Shift+S para Modo Espectador)</li>
+          <li><strong>N:</strong> Ciclar Modos de Nota</li>
+          <li><strong>V:</strong> Puxar Vértices On/Off</li>
+          <li><strong>C:</strong> Alternar Modo de Acorde (Não confundir com Shift+C para Config)</li>
+          <li><strong>Shift + I:</strong> Abrir/Fechar Manual</li>
+          <li><strong>Shift + C:</strong> Abrir/Fechar Configurações</li>
+          <li><strong>Shift + A:</strong> Abrir/Fechar Painel Arpejo</li>
+          <li><strong>Shift + O:</strong> Abrir/Fechar Painel OSC</li>
+          <li><strong>Shift + D:</strong> Sync DMX On/Off</li>
+          <li><strong>Shift + F:</strong> MIDI Feedback On/Off</li>
+          <li><strong>Shift + R:</strong> Gravar/Parar Loop OSC</li>
+          <li><strong>Shift + P:</strong> Tocar/Parar Loop OSC</li>
+          <li><strong>Shift + S:</strong> Modo Espectador On/Off</li>
+          <li><strong>Esc:</strong> Fecha o modal ativo ou remove foco de inputs.</li>
+      </ul>
+      <p>Atalhos são desabilitados no modo espectador e quando um campo de texto está focado (exceto Esc).</p>
+
+      <div class="modal-footer">
+        <p>Desenvolvido por <a href="https://www.instagram.com/leocarvalho.exe" target="_blank" rel="noopener noreferrer">Leonardo Carvalho</a> — 2024</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeSettingsModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Configurações MIDI</h3>
+      <label for="midiOutputSelect">Porta de Saída MIDI:</label>
+      <select id="midiOutputSelect"></select>
+
+      <label for="midiInputSelect">Porta de Entrada MIDI (para Feedback OSC):</label>
+      <select id="midiInputSelect"></select>
+
+      <div class="modal-footer"><p>As configurações são aplicadas em tempo real.</p></div>
+    </div>
+  </div>
+
+  <div id="oscControlModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeOscControlModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Painel de Controle OSC</h3>
+
+      <label for="oscAddressInput">Endereço OSC:</label>
+      <input type="text" id="oscAddressInput" placeholder="/exemplo/endereco 123 'texto'">
+
+      <label for="oscArgsInput">Argumentos (JSON Array ou separados por espaço):</label>
+      <input type="text" id="oscArgsInput" placeholder='["texto", 123, 0.5]  ou  texto 123 0.5'>
+
+      <button id="sendTestOSCButton" class="control-button" style="margin-top:12px; background-color: #007bff;">Enviar Mensagem OSC</button>
+
+      <hr>
+
+      <label for="oscLoopDurationInput">Duração do Loop OSC Gravado (ms):</label>
+      <input type="number" id="oscLoopDurationInput" value="5000" min="100" step="100">
+
+      <hr>
+
+      <label for="oscLogTextarea">Log de Mensagens OSC (Enviadas/Recebidas):</label>
+      <textarea id="oscLogTextarea" readonly placeholder="Mensagens OSC do painel, loop e UDP aparecerão aqui..."></textarea>
+      <button id="clearOscLogButton" class="control-button" style="margin-top: 8px;">Limpar Log</button>
+      <button id="exportOscLogButton" class="control-button" style="margin-top: 8px;">Exportar Log</button>
+
+
+      <div class="modal-footer"><p>Use para testar, controlar ou monitorar OSC.</p></div>
+    </div>
+  </div>
+
+  <video id="video" style="display:none;" playsinline></video>
+
+  <div id="shapePresetModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeShapePresetModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Gerenciador de Presets de Formas</h3>
+
+      <label for="shapeToPresetSelect">Selecionar Forma para Preset:</label>
+      <select id="shapeToPresetSelect">
+        <!-- Options will be populated by JS, e.g., Forma 1, Forma 2 -->
+      </select>
+
+      <label for="presetNameInput">Nome do Preset:</label>
+      <input type="text" id="presetNameInput" placeholder="Ex: Meu Preset Incrível">
+
+      <div class="button-group">
+        <button id="saveShapePresetButton" class="control-button">Salvar Preset da Forma Atual</button>
+        <button id="loadShapePresetButton" class="control-button">Carregar Preset na Forma Atual</button>
+      </div>
+
+      <label for="savedPresetsSelect" style="margin-top: 20px;">Presets Salvos:</label>
+      <select id="savedPresetsSelect" size="5" style="min-height: 80px;"></select>
+      <div class="button-group">
+        <button id="deleteSelectedPresetButton" class="control-button" style="background-color: #e06c75;">Deletar Preset Selecionado</button>
+      </div>
+
+      <hr>
+      <h4>Importar / Exportar Todos os Presets</h4>
+      <div class="button-group">
+        <button id="exportAllPresetsButton" class="control-button">Exportar Todos (JSON)</button>
+        <button id="importAllPresetsButton" class="control-button">Importar (JSON)</button>
+      </div>
+      <input type="file" id="importPresetFileInput" accept=".json" style="display:none;">
+
+      <div class="modal-footer"><p>Salve e carregue configurações de formas. Presets são salvos localmente.</p></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js"></script>
+  <script src="main34.js" defer></script>
+  <div id="hud">
+    <!-- HUD content will be populated by JS -->
+    <button id="reconnectOSCButton" class="control-button" style="display:none; margin-left: 10px; padding: 3px 6px; font-size: 11px;">Reconnect OSC</button>
+  </div>
+
+  <script>
+    // Moved to main34.js to be part of the UI SETUP or main initialization logic
+    // window.onload = () => {
+    //   if (typeof initMidi === 'function') initMidi();
+    //   if (typeof setupOSC === 'function') setupOSC();
+    //   if (typeof setupEventListeners === 'function') setupEventListeners();
+    //   if (typeof initializeCamera === 'function') initializeCamera();
+    //   if (typeof initPresetManager === 'function') initPresetManager();
+    // };
+  </script>
+</body>
+</html>
