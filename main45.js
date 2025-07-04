@@ -171,6 +171,11 @@ const oscHostInput = document.getElementById('oscHostInput');
 const oscPortInput = document.getElementById('oscPortInput');
 const saveOscConfigButton = document.getElementById('saveOscConfigButton');
 const cameraSelectElement = document.getElementById('cameraSelect');
+// --- Novos elementos DOM para Áudio Interno (v45) ---
+const internalAudioToggleButton = document.getElementById('internalAudioToggleButton');
+const audioWaveformSelect = document.getElementById('audioWaveformSelect');
+const audioMasterVolumeSlider = document.getElementById('audioMasterVolume');
+const audioMasterVolumeValueSpan = document.getElementById('audioMasterVolumeValue');
 
 let currentCameraDeviceId = null;
 let mediaStream = null;
@@ -859,8 +864,30 @@ function setupEventListeners() {
     if (gestureSimToggleButton) gestureSimToggleButton.addEventListener('click', toggleGestureSimulation);
     if (reconnectOSCButton) reconnectOSCButton.addEventListener('click', () => { logOSC("SYSTEM","Reconectando OSC...",[]); if(reconnectOSCButton)reconnectOSCButton.disabled=true; setupOSC(); setTimeout(()=>{if(osc && osc.status() !== OSC.STATUS.IS_OPEN && reconnectOSCButton)reconnectOSCButton.disabled=false;}, OSC_RECONNECT_TIMEOUT+500); });
     if (cameraSelectElement) cameraSelectElement.addEventListener('change', (event) => { const newDeviceId = event.target.value; if (newDeviceId === currentCameraDeviceId && mediaStream) return; initializeCamera(newDeviceId || null).then(() => updateHUD()); });
+
+    // --- Listeners para Áudio Interno (v45) ---
+    if (internalAudioToggleButton) internalAudioToggleButton.addEventListener('click', toggleInternalAudio);
+    if (audioWaveformSelect) audioWaveformSelect.addEventListener('change', (e) => { if(simpleSynth) simpleSynth.setWaveform(e.target.value); saveAllPersistentSettings(); updateHUD(); });
+    if (audioMasterVolumeSlider) audioMasterVolumeSlider.addEventListener('input', (e) => { const volume = parseFloat(e.target.value); if(simpleSynth) simpleSynth.setMasterVolume(volume); if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = volume.toFixed(2); saveAllPersistentSettings(); /* Não precisa de updateHUD() aqui, pois não mostra volume no HUD */ });
+
     document.addEventListener('keydown', handleKeyPress);
     logDebug("Ouvintes de eventos configurados.");
+}
+
+
+function toggleInternalAudio() {
+  if (spectatorModeActive) return;
+  internalAudioEnabled = !internalAudioEnabled;
+  if (internalAudioToggleButton) {
+    internalAudioToggleButton.textContent = internalAudioEnabled ? "🔊 Áudio ON" : "🔊 Áudio OFF";
+    internalAudioToggleButton.classList.toggle('active', internalAudioEnabled);
+  }
+  if (!internalAudioEnabled && simpleSynth) {
+    simpleSynth.allNotesOff(); // Para todas as notas soando no synth interno
+  }
+  sendOSCMessage('/global/state/internalAudioEnabled', internalAudioEnabled ? 1 : 0);
+  updateHUD();
+  saveAllPersistentSettings();
 }
 
 function updateHUD() {
@@ -868,11 +895,19 @@ function updateHUD() {
   if (hudElement.classList.contains('hidden')) { let textSpan = hudElement.querySelector('span#hudTextContent'); if (textSpan) { textSpan.innerHTML = ""; } return; }
   let txt = "";
   if (spectatorModeActive) txt += `<b>👓 MODO ESPECTADOR</b><br>`;
+
+  const audioIcon = internalAudioEnabled && audioCtx && audioCtx.state === 'running' ? '🟢' : '🔴';
+  const audioStatusText = internalAudioEnabled && audioCtx && audioCtx.state === 'running' ? (simpleSynth?.waveform || 'ON') : 'OFF';
+  const audioStatusClass = internalAudioEnabled && audioCtx && audioCtx.state === 'running' ? 'status-ok' : 'status-error';
+  txt += `Áudio: ${audioIcon} <span class="${audioStatusClass}">${audioStatusText}</span> | `;
+
   const midiStatusIcon = midiAccess && midiOutput ? '🟢' : '🔴';
   txt += `MIDI: ${midiStatusIcon} <span class="${midiAccess && midiOutput ? 'status-ok':'status-error'}">${midiEnabled && midiOutput ? (midiOutput.name || 'ON') : 'OFF'}</span> | `;
+
   const oscConnected = osc && osc.status() === OSC.STATUS.IS_OPEN;
   const oscStatusIcon = oscConnected ? '🟢' : (oscStatus.includes("Erro") || oscStatus.includes("Falha") ? '🟠' : '🔴');
   txt += `OSC: ${oscStatusIcon} <span class="${oscConnected ? 'status-ok': (oscStatus.includes("Erro") || oscStatus.includes("Falha") ? 'status-warn' : 'status-error')}">${oscStatus}</span><br>`;
+
   shapes.forEach(s => { txt += `<b>F${s.id+1}:</b> R:${s.radius.toFixed(0)} L:${s.sides===100?"○":s.sides} Gest:${spectatorModeActive?"-":(s.activeGesture||"Nenhum")}<br>`; });
   txt += `<b>Global:</b> Pulso:${pulseModeActive?'ON':'OFF'} Artic:${staccatoModeActive?'Stac':'Leg'} VtxPull:${vertexPullModeActive?'ON':'OFF'}<br>`;
   txt += `&nbsp;&nbsp;Escala:${SCALES[currentScaleName].name} Nota:${currentNoteMode} Acorde:${chordMode} Oper:${operationMode==='one_person'?'1P':'2P'}<br>`;
@@ -905,24 +940,106 @@ function handleKeyPress(e) {
     const anyModalOpen = Array.from(document.querySelectorAll('.modal-overlay')).some(m => m.style.display === 'flex');
     if (e.key === 'Escape') { if (isInputFocused) activeEl.blur(); else if (anyModalOpen) [infoModal, settingsModal, arpeggioSettingsModal, oscControlModal, shapePresetModal, oscConfigModal].forEach(m => {if(m)m.style.display='none'}); return; }
     if (isInputFocused || (spectatorModeActive && e.key !== 'Escape')) return;
-    const actionMap = { 'm': toggleMidiEnabled, 'l': () => { staccatoModeActive = !staccatoModeActive; /*...*/ }, /* ... more ... */ };
-    const correctedShiftActionMap = { 'I': () => {if(infoModal) infoModal.style.display = infoModal.style.display==='flex'?'none':'flex'}, /* ... more ... */ };
+
+  // Mapa de ações sem Shift
+  const actionMap = {
+    'm': toggleMidiEnabled,
+    // Adicione outras ações sem shift aqui
+  };
+
+  // Mapa de ações com Shift
+  const correctedShiftActionMap = {
+    'I': () => { if (infoModal) infoModal.style.display = infoModal.style.display === 'flex' ? 'none' : 'flex'; },
+    'C': () => { if (settingsModal) settingsModal.style.display = settingsModal.style.display === 'flex' ? 'none' : 'flex'; },
+    'A': () => { if (arpeggioSettingsModal) arpeggioSettingsModal.style.display = arpeggioSettingsModal.style.display === 'flex' ? 'none' : 'flex'; },
+    'K': () => { if (oscConfigModal) oscConfigModal.style.display = oscConfigModal.style.display === 'flex' ? 'none' : 'flex'; },
+    'B': () => { if (shapePresetModal) shapePresetModal.style.display = shapePresetModal.style.display === 'flex' ? 'none' : 'flex'; },
+    'V': toggleInternalAudio, // Atalho para Áudio Interno
+    'D': toggleDMXSync,
+    'R': toggleOSCRecording,
+    'P': playRecordedOSCLoop,
+    'F': toggleMidiFeedback,
+    'S': toggleSpectatorMode,
+    'T': toggleTheme,
+    // Adicione outros atalhos com Shift aqui
+  };
+
     const key = e.shiftKey ? e.key.toUpperCase() : e.key.toLowerCase();
-    const map = e.shiftKey ? correctedShiftActionMap : actionMap;
-    if (map[key]) { e.preventDefault(); map[key](); }
+  const mapToUse = e.shiftKey ? correctedShiftActionMap : actionMap;
+
+  if (mapToUse[key]) {
+    e.preventDefault();
+    mapToUse[key]();
+    // Log para debug de atalhos
+    // console.log(`Shortcut: ${e.shiftKey ? 'Shift+' : ''}${key} -> Action: ${mapToUse[key].name || 'anonymous function'}`);
+  }
 }
 
-function savePersistentSetting(key,value){try{const s=JSON.parse(localStorage.getItem(APP_SETTINGS_KEY))||{};s[key]=value;localStorage.setItem(APP_SETTINGS_KEY,JSON.stringify(s));}catch(e){}}
-function loadPersistentSetting(key,defaultValue){try{const s=JSON.parse(localStorage.getItem(APP_SETTINGS_KEY))||{};return s[key]!==undefined?s[key]:defaultValue;}catch(e){return defaultValue;}}
-function saveAllPersistentSettings(){savePersistentSetting('operationMode',operationMode);savePersistentSetting('midiEnabled',midiEnabled);/*...more...*/console.log("Configs V44 salvas.");} // Atualizado para V44
-function loadAllPersistentSettings(){operationMode=loadPersistentSetting('operationMode','two_persons');midiEnabled=loadPersistentSetting('midiEnabled',true);/*...more...*/loadOscSettings();loadArpeggioSettings();console.log("Configs V44 carregadas.");return{savedMidiOutputId:loadPersistentSetting('midiOutputId',null),savedMidiInputId:loadPersistentSetting('midiInputId',null)};} // Atualizado para V44
-function saveArpeggioSettings(){const s={currentArpeggioStyle,arpeggioBPM,noteInterval,externalBPM};try{localStorage.setItem(ARPEGGIO_SETTINGS_KEY,JSON.stringify(s));}catch(e){}savePersistentSetting('arpeggioSettingsLastUpdate',Date.now());}
+function savePersistentSetting(key,value){try{const s=JSON.parse(localStorage.getItem(APP_SETTINGS_KEY))||{};s[key]=value;localStorage.setItem(APP_SETTINGS_KEY,JSON.stringify(s));}catch(e){console.error("Erro ao salvar configuração:", key, value, e);}}
+function loadPersistentSetting(key,defaultValue){try{const s=JSON.parse(localStorage.getItem(APP_SETTINGS_KEY))||{};return s[key]!==undefined?s[key]:defaultValue;}catch(e){console.error("Erro ao carregar configuração:", key, e);return defaultValue;}}
+
+function saveAllPersistentSettings(){
+  savePersistentSetting('operationMode',operationMode);
+  savePersistentSetting('midiEnabled',midiEnabled);
+  savePersistentSetting('internalAudioEnabled', internalAudioEnabled); // v45
+  if(simpleSynth) savePersistentSetting('audioWaveform', simpleSynth.waveform); // v45
+  if(simpleSynth) savePersistentSetting('audioMasterVolume', simpleSynth.masterGainNode.gain.value); // v45
+  savePersistentSetting('dmxSyncModeActive',dmxSyncModeActive);
+  savePersistentSetting('midiFeedbackEnabled',midiFeedbackEnabled);
+  savePersistentSetting('spectatorModeActive',spectatorModeActive); // Embora o modo espectador não deva persistir ligado, salvar para consistência
+  savePersistentSetting('currentTheme', currentTheme);
+  savePersistentSetting('oscLoopDuration', oscLoopDuration);
+  savePersistentSetting('midiOutputId', midiOutput ? midiOutput.id : null);
+  savePersistentSetting('midiInputId', midiInput ? midiInput.id : null);
+  // Não salvar cameraError, gestureSimulationActive, isRecordingOSC, isPlayingOSCLoop - são estados de tempo de execução
+  console.log("Configs V45 salvas no localStorage.");
+}
+
+function loadAllPersistentSettings(){
+  operationMode = loadPersistentSetting('operationMode','two_persons');
+  midiEnabled = loadPersistentSetting('midiEnabled',true);
+  internalAudioEnabled = loadPersistentSetting('internalAudioEnabled', true); // v45
+  const savedWaveform = loadPersistentSetting('audioWaveform', 'sine'); // v45
+  const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5); // v45
+
+  dmxSyncModeActive = loadPersistentSetting('dmxSyncModeActive',false);
+  midiFeedbackEnabled = loadPersistentSetting('midiFeedbackEnabled',false);
+  // spectatorModeActive = loadPersistentSetting('spectatorModeActive',false); // Não carregar, sempre iniciar como false
+  spectatorModeActive = false;
+  currentTheme = loadPersistentSetting('currentTheme','theme-dark'); // Carrega o tema antes de aplicar
+  oscLoopDuration = loadPersistentSetting('oscLoopDuration',5000);
+
+  // Aplica as configurações carregadas que afetam a UI ou o estado do synth
+  if (internalAudioToggleButton) { // Garante que o elemento exista
+      internalAudioToggleButton.textContent = internalAudioEnabled ? "🔊 Áudio ON" : "🔊 Áudio OFF";
+      internalAudioToggleButton.classList.toggle('active', internalAudioEnabled);
+  }
+  if (audioWaveformSelect) audioWaveformSelect.value = savedWaveform;
+  if (simpleSynth) simpleSynth.setWaveform(savedWaveform); // Aplica ao synth se já instanciado
+
+  if (audioMasterVolumeSlider) audioMasterVolumeSlider.value = savedMasterVolume;
+  if (audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = savedMasterVolume.toFixed(2);
+  if (simpleSynth) simpleSynth.setMasterVolume(savedMasterVolume); // Aplica ao synth
+
+  loadOscSettings(); // Carrega OSC_HOST e OSC_PORT
+  loadArpeggioSettings(); // Carrega configurações de arpejo
+
+  console.log("Configs V45 carregadas do localStorage.");
+  return {
+    savedMidiOutputId: loadPersistentSetting('midiOutputId',null),
+    savedMidiInputId: loadPersistentSetting('midiInputId',null),
+    // Retorna waveform e volume para serem aplicados ao SimpleSynth após sua instanciação, se necessário
+    // No entanto, a lógica acima já tenta aplicar se simpleSynth existir.
+  };
+}
+
+function saveArpeggioSettings(){const s={currentArpeggioStyle,arpeggioBPM,noteInterval,externalBPM};try{localStorage.setItem(ARPEGGIO_SETTINGS_KEY,JSON.stringify(s));}catch(e){}/*savePersistentSetting('arpeggioSettingsLastUpdate',Date.now()); Não é mais necessário aqui, pois está dentro de saveAllPersistentSettings */}
 function loadArpeggioSettings(){try{const s=JSON.parse(localStorage.getItem(ARPEGGIO_SETTINGS_KEY));if(s){currentArpeggioStyle=s.currentArpeggioStyle||"UP";arpeggioBPM=s.arpeggioBPM||120;noteInterval=s.noteInterval||(60000/arpeggioBPM);}}catch(e){}if(arpeggioStyleSelect)arpeggioStyleSelect.value=currentArpeggioStyle;if(arpeggioBPMSlider)arpeggioBPMSlider.value=arpeggioBPM;if(arpeggioBPMValueSpan)arpeggioBPMValueSpan.textContent=arpeggioBPM;if(noteIntervalSlider)noteIntervalSlider.value=noteInterval;if(noteIntervalValueSpan)noteIntervalValueSpan.textContent=noteInterval;}
 function populateArpeggioStyleSelect(){if(!arpeggioStyleSelect)return;arpeggioStyleSelect.innerHTML='';ARPEGGIO_STYLES.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();arpeggioStyleSelect.appendChild(o);});arpeggioStyleSelect.value=currentArpeggioStyle;}
 
 window.addEventListener('DOMContentLoaded', () => {
-    logDebug("DOM Carregado. Iniciando main44.js...");
-    console.log("DOM Carregado. Iniciando main44.js...");
+    logDebug("DOM Carregado. Iniciando main45.js...");
+    console.log("DOM Carregado. Iniciando main45.js...");
     detectPlatform();
     hasWebGL2 = checkWebGL2Support();
     if (!hasWebGL2) displayGlobalError("Aviso: WebGL2 não disponível.", 15000);
@@ -932,13 +1049,34 @@ window.addEventListener('DOMContentLoaded', () => {
 
     initFallbackShapes(); // Inicializa formas de fallback cedo
 
-    loadOscSettings();
+    // Carregar configurações persistentes PRIMEIRO
+    // loadAllPersistentSettings() agora também lida com OSC e Arpeggio settings internamente
+    // e aplica configurações de áudio se simpleSynth já estiver disponível.
     const { savedMidiOutputId, savedMidiInputId } = loadAllPersistentSettings();
-    loadTheme();
-    initPresetManager();
-    setupEventListeners(); 
 
-    setupOSC();
+    loadTheme(); // Aplicar tema carregado por loadAllPersistentSettings
+    applyTheme(currentTheme); // Certifica que o tema é aplicado visualmente
+
+    initPresetManager();
+    setupEventListeners(); // Configura todos os event listeners, incluindo os novos para áudio
+
+    // Instanciar SimpleSynth aqui se o AudioContext já foi inicializado por um gesto anterior
+    // (embora a política de autoplay geralmente exija que initAudioContext seja chamado por gesto)
+    // A inicialização principal do SimpleSynth ocorre em initAudioContext -> initAudioContextOnGesture
+    if (audioCtx && !simpleSynth) { // Se audioCtx existe mas synth não (caso raro)
+        simpleSynth = new SimpleSynth(audioCtx);
+        // Reaplica configs de áudio caso o synth tenha sido criado depois de loadAllPersistentSettings
+        const savedWaveform = loadPersistentSetting('audioWaveform', 'sine');
+        const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5);
+        simpleSynth.setWaveform(savedWaveform);
+        simpleSynth.setMasterVolume(savedMasterVolume);
+        if(audioWaveformSelect) audioWaveformSelect.value = savedWaveform;
+        if(audioMasterVolumeSlider) audioMasterVolumeSlider.value = savedMasterVolume;
+        if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = savedMasterVolume.toFixed(2);
+    }
+
+
+    setupOSC(); // Configura OSC após carregar settings de OSC em loadAllPersistentSettings
 
     currentCameraDeviceId = localStorage.getItem(CAMERA_DEVICE_ID_KEY) || null;
     if (currentCameraDeviceId === "null" || currentCameraDeviceId === "undefined") currentCameraDeviceId = null;
@@ -946,28 +1084,31 @@ window.addEventListener('DOMContentLoaded', () => {
     initMidi().then(async () => {
         if (savedMidiOutputId && availableMidiOutputs.has(savedMidiOutputId)) { if(midiOutputSelect) midiOutputSelect.value = savedMidiOutputId; midiOutput = availableMidiOutputs.get(savedMidiOutputId); }
         else if (availableMidiOutputs.size > 0 && midiOutputSelect) { midiOutputSelect.selectedIndex = 0; midiOutput = availableMidiOutputs.get(midiOutputSelect.value); }
+
         if (savedMidiInputId && availableMidiInputs.has(savedMidiInputId)) { if(midiInputSelect) midiInputSelect.value = savedMidiInputId; setMidiInput(availableMidiInputs.get(savedMidiInputId)); }
         else if (availableMidiInputs.size > 0 && midiInputSelect) { midiInputSelect.selectedIndex = 0; setMidiInput(availableMidiInputs.get(midiInputSelect.value)); }
+
+        // Salvar IDs MIDI novamente após seleção/fallback para garantir que estejam corretos
         savePersistentSetting('midiOutputId', midiOutput ? midiOutput.id : null);
         savePersistentSetting('midiInputId', midiInput ? midiInput.id : null);
+
         await populateCameraSelect();
-        initializeCamera(currentCameraDeviceId); // initializeCamera agora pode chamar drawFallbackAnimation
+        initializeCamera(currentCameraDeviceId);
     }).catch(err => {
         console.error("Erro MIDI/Câmera init:", err);
-        // Mesmo com erro MIDI, tenta popular câmeras e inicializar
         populateCameraSelect().then(() => initializeCamera(currentCameraDeviceId));
     });
 
-    populateArpeggioStyleSelect();
-    if(oscLoopDurationInput) oscLoopDurationInput.value = oscLoopDuration;
+    populateArpeggioStyleSelect(); // Popula e define valor com base no carregado em loadArpeggioSettings
+    if(oscLoopDurationInput) oscLoopDurationInput.value = oscLoopDuration; // Definido por loadAllPersistentSettings
     if(hudElement) hudElement.classList.remove('hidden'); 
 
-    updateHUD();
-    sendAllGlobalStatesOSC();
+    updateHUD(); // Atualiza o HUD com todos os estados carregados/padrão
+    sendAllGlobalStatesOSC(); // Envia estados iniciais via OSC
 
-    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v44).\n`;
+    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v45).\n`;
     
-    console.log("Iniciando loop de animação (v44) e finalizando DOMContentLoaded.");
+    console.log("Iniciando loop de animação (v45) e finalizando DOMContentLoaded.");
     animationLoop(); 
 });
 

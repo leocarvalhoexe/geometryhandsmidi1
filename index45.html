@@ -304,9 +304,10 @@
     <div id="sidebarContent">
       <button id="info" class="control-button" title="Manual do Usuário (Shift+I)">ℹ️ Manual</button>
       <button id="infoHudButton" class="control-button" title="Mostrar/Ocultar Info HUD">ℹ️ Info HUD</button> <!-- NOVO BOTÃO -->
-      <button id="settingsButton" class="control-button" title="Configurações MIDI, Câmera e Feedback (Shift+C)">⚙️ Configurações</button>
+      <button id="settingsButton" class="control-button" title="Configurações MIDI, Câmera, Áudio e Feedback (Shift+C)">⚙️ Configurações</button>
       <button id="arpeggioSettingsButton" class="control-button" title="Configurações do Arpejador (Shift+A)">🎼 Arpejo</button>
       <button id="oscConfigButton" class="control-button" title="Configurações OSC (Shift+K)">📡 OSC Config</button>
+      <button id="internalAudioToggleButton" class="control-button" title="Ativar/Desativar Áudio Interno (Shift+V)">🔊 Áudio Interno</button>
       <button id="midiToggleButton" class="control-button" title="Ativar/Desativar Envio MIDI (M)">🎹 MIDI</button>
       <button id="syncDMXNotesButton" class="control-button" title="Sincronizar Notas MIDI como OSC para DMX (Shift+D)">🎶 Sync DMX</button>
       <button id="recordOSCButton" class="control-button" title="Gravar/Parar Gravação de Loop OSC (Shift+R)">⏺️ Gravar OSC</button>
@@ -363,27 +364,196 @@
   <div id="infoModal" class="modal-overlay">
     <div class="modal-content">
       <button id="closeModal" class="close-modal-button" title="Fechar">&times;</button>
-      <h3>Manual do Usuário - v44</h3> <!-- Version Update -->
-      <h4>Novidades da v44</h4>
-      <ul>
-        <li><strong>Correção de Erro:</strong> Restaurada a funcionalidade `drawFallbackAnimation` e suas dependências (`initFallbackShapes`, `drawLandmarks`) para corrigir erros de referência quando a câmera falha ou não está disponível.</li>
-        <li>Outras atualizações e melhorias podem ser listadas aqui.</li>
-      </ul>
+      <h3>Manual do Usuário - MIDI Shape Manipulator v45</h3>
+
+      <h4>Visão Geral</h4>
+      <p>O MIDI Shape Manipulator é uma aplicação web interativa que transforma seus gestos de mão, capturados pela webcam, em música e visualizações dinâmicas. Controle formas geométricas na tela, gere notas MIDI, mensagens OSC e, agora, som diretamente no navegador!</p>
+      <p>Ideal para performances audiovisuais, exploração sonora e aprendizado sobre interação gestual.</p>
+
       <hr>
-      <h4>Novidades da v43</h4>
+      <h4>Novidades da v45</h4>
       <ul>
-        <li><strong>Correção de Erro:</strong> Corrigido um erro de sintaxe (`Unexpected token 'else'`) que impedia o carregamento correto do JavaScript.</li>
-        <li><strong>Funcionalidade HUD Aprimorada:</strong> O botão "ℹ️ Info HUD" agora alterna corretamente a visibilidade do HUD, atualiza seu texto (Mostrar/Ocultar HUD) e seu estado visual (classe `active`).</li>
+        <li><strong>🔊 Áudio Interno (Web Audio API):</strong> Agora você pode gerar som diretamente no navegador!
+          <ul>
+            <li>Ative/Desative usando o botão "🔊 Áudio Interno" na barra lateral (Atalho: <code>Shift+V</code>).</li>
+            <li>Configure a forma de onda (Sine, Square, Sawtooth, Triangle) e o volume master no modal de "⚙️ Configurações".</li>
+            <li>As notas geradas pelos gestos agora podem ser ouvidas sem a necessidade de um sintetizador MIDI externo.</li>
+          </ul>
+        </li>
+        <li>As configurações de Áudio Interno (estado, forma de onda, volume) são salvas localmente.</li>
+        <li>Indicador de status do Áudio Interno e forma de onda adicionados ao HUD.</li>
+        <li>Atualizações gerais de estrutura e código para a v45.</li>
       </ul>
+
       <hr>
-      <h4>Novidades da v42</h4>
+      <h4>Iniciando</h4>
+      <ol>
+        <li><strong>Permissão da Câmera:</strong> Ao abrir a página, seu navegador solicitará permissão para usar a webcam. Conceda para ativar a detecção de mãos.</li>
+        <li><strong>Áudio Interno:</strong>
+            <ul>
+                <li>Por padrão, o áudio interno está habilitado. Você deverá ouvir som assim que os gestos começarem a gerar notas.</li>
+                <li>Clique em qualquer lugar da página ou pressione uma tecla para garantir que o contexto de áudio do navegador seja ativado (política de autoplay).</li>
+                <li>Use o botão "🔊 Áudio Interno" (<code>Shift+V</code>) para ligar/desligar.</li>
+                <li>Ajuste o volume e a forma de onda em "⚙️ Configurações".</li>
+            </ul>
+        </li>
+        <li><strong>Saída MIDI (Opcional):</strong>
+            <ul>
+                <li>Para enviar notas MIDI para um DAW (Digital Audio Workstation) ou sintetizador de hardware, vá em "⚙️ Configurações" e selecione sua porta de saída MIDI desejada.</li>
+                <li>Certifique-se que o botão "🎹 MIDI" na barra lateral está ativo (ON). Atalho: <code>M</code>.</li>
+            </ul>
+        </li>
+        <li><strong>Conexão OSC (Opcional):</strong>
+            <ul>
+                <li>Para enviar mensagens OSC (Open Sound Control), configure o IP e a Porta do servidor OSC no modal "📡 OSC Config". O script <code>osc_relayXX.py</code> (incluído no repositório, execute com Python) pode ser usado como um servidor de relay local.</li>
+                <li>Após configurar, clique em "Salvar e Reconectar". O status da conexão aparecerá no HUD.</li>
+            </ul>
+        </li>
+      </ol>
+
+      <hr>
+      <h4>Interface Principal</h4>
       <ul>
-        <li><strong>HUD Reposicionado:</strong> O painel de status (HUD) foi movido para o canto inferior direito da tela.</li>
-        <li><strong>Botão Info HUD:</strong> Adicionado um botão "ℹ️ Info HUD" na barra lateral para mostrar/ocultar o HUD. O HUD é visível por padrão.</li>
-        <li>Ajustes de CSS para garantir que o HUD não sobreponha a barra lateral e mantenha a responsividade.</li>
+        <li><strong>Barra Lateral (Esquerda):</strong> Acesse todas as funcionalidades principais. Clique no ícone ☰ para abrir/fechar.</li>
+        <li><strong>Canvas Principal:</strong> Área onde as formas são desenhadas e interagem com seus gestos.</li>
+        <li><strong>HUD (Heads-Up Display):</strong> Painel no canto inferior direito com informações de status em tempo real (MIDI, OSC, Áudio, gestos, etc.). Use o botão "ℹ️ Info HUD" na barra lateral para mostrar/ocultar.</li>
       </ul>
+
       <hr>
-      <p><em>(Conteúdo anterior do manual omitido para brevidade)</em></p>
+      <h4>Controles e Funcionalidades (Botões da Barra Lateral)</h4>
+      <ul>
+        <li><strong>ℹ️ Manual:</strong> Abre esta janela de informações (<code>Shift+I</code>).</li>
+        <li><strong>ℹ️ Info HUD:</strong> Mostra/oculta o painel de informações (HUD).</li>
+        <li><strong>⚙️ Configurações:</strong> Abre o modal para configurar:
+            <ul>
+                <li><strong>Saída e Entrada MIDI:</strong> Selecione os dispositivos MIDI.</li>
+                <li><strong>Câmera:</strong> Escolha a fonte de vídeo.</li>
+                <li><strong>Áudio Interno (v45+):</strong> Defina a Forma de Onda (Sine, Square, Sawtooth, Triangle) e o Volume Master do sintetizador interno.</li>
+            </ul>
+        </li>
+        <li><strong>🎼 Arpejo:</strong> Configurações do arpejador (Estilo, BPM, Intervalo de Nota) (<code>Shift+A</code>).</li>
+        <li><strong>📡 OSC Config:</strong> Configura IP e Porta para comunicação OSC (<code>Shift+K</code>). Abre também um painel para enviar mensagens OSC de teste e ver logs.</li>
+        <li><strong>🔊 Áudio Interno:</strong> Ativa/Desativa o sintetizador de áudio interno (<code>Shift+V</code>).</li>
+        <li><strong>🎹 MIDI:</strong> Ativa/Desativa o envio de mensagens MIDI (<code>M</code>).</li>
+        <li><strong>🎶 Sync DMX:</strong> Sincroniza notas MIDI como mensagens OSC formatadas para controle DMX (<code>Shift+D</code>).</li>
+        <li><strong>⏺️ Gravar OSC:</strong> Grava uma sequência de mensagens OSC enviadas pela aplicação (<code>Shift+R</code>).</li>
+        <li><strong>▶️ Loop OSC:</strong> Reproduz a sequência OSC gravada. Fica habilitado após uma gravação (<code>Shift+P</code>).</li>
+        <li><strong>💾 Presets:</strong> Gerencia presets de configuração das formas (Salvar, Carregar, Deletar, Importar/Exportar JSON) (<code>Shift+B</code>).</li>
+        <li><strong>🎤 MIDI In:</strong> Ativa/Desativa o feedback de mensagens MIDI recebidas (via porta de entrada selecionada) para o log OSC (<code>Shift+F</code>).</li>
+        <li><strong>👓 Espectador:</strong> Desativa o controle por gestos e para a geração de notas/OSC, útil para apenas observar (<code>Shift+S</code>).</li>
+        <li><strong>🌙 Tema:</strong> Alterna entre tema claro e escuro (<code>Shift+T</code>).</li>
+        <li><strong>🤖 Simulador:</strong> Ativa/Desativa um modo de simulação de gestos, útil para desenvolvimento ou quando uma câmera não está disponível.</li>
+      </ul>
+
+      <hr>
+      <h4>Gestos e Interação com as Formas</h4>
+      <p>O sistema detecta até duas mãos (dependendo do modo de operação). Cada mão (ou par de mãos, no modo "one_person") pode controlar uma forma geométrica.</p>
+      <ul>
+        <li><strong>Posicionamento da Forma:</strong> O centro da forma geralmente segue a posição média dos pulsos detectados para ela.</li>
+        <li><strong>Controle de Raio (Tamanho):</strong>
+            <ul>
+                <li><strong>Modo "one_person":</strong> Junte os polegares das duas mãos e afaste/aproxime as mãos (como se estivesse esticando ou encolhendo algo entre elas) enquanto os dedos indicadores estão curvados/fechados.</li>
+                <li><strong>Modo "two_persons":</strong> (Este gesto pode precisar de revisão/simplificação para controle individual por forma) Atualmente, o raio afeta a velocidade das notas.</li>
+            </ul>
+        </li>
+        <li><strong>Controle de Lados (Complexidade da Forma):</strong>
+            <ul>
+                <li><strong>Modo "one_person":</strong> Use a mão esquerda. Faça um gesto de pinça com o polegar e o indicador. A distância entre os dedos controla o número de lados da forma (de 3 a 20, ou círculo se muito afastado). A pinça deve estar próxima à borda da forma.</li>
+                 <li><strong>Modo "two_persons":</strong> Cada forma é controlada pela mão esquerda da "pessoa" correspondente (mão mais à esquerda para Forma 1, próxima mão à esquerda para Forma 2, se houver).</li>
+            </ul>
+        </li>
+        <li><strong>Distorção / "Liquify" / Efeitos:</strong>
+            <ul>
+                <li><strong>Modo "one_person":</strong> Use a mão direita. A proximidade das pontas dos dedos da mão direita aos vértices da forma causa uma distorção "líquida". Essa distorção também modula parâmetros MIDI CC como Reverb (CC91), Delay (CC94), ModWheel (CC1) e Resonance (CC71), além do Pitch Bend.</li>
+                <li><strong>Modo "two_persons":</strong> Cada forma é controlada pela mão direita da "pessoa" correspondente.</li>
+            </ul>
+        </li>
+        <li><strong>Geração de Notas:</strong> As notas são geradas com base no "Modo de Nota" selecionado (Sequencial, Arpejo, Acorde, Random Walk) e na escala musical atual.
+            <ul>
+                <li><strong>Modo Sequencial:</strong> As notas são tocadas sequencialmente ao longo das bordas da forma.</li>
+                <li><strong>Modo Arpejo:</strong> As notas da forma são tocadas em um padrão de arpejo (configurável em "🎼 Arpejo").</li>
+                <li><strong>Modo Acorde:</strong> Um acorde é formado com base na nota da borda atual.</li>
+                <li><strong>Modo Random Walk:</strong> Uma nota aleatória dentro da escala é escolhida.</li>
+            </ul>
+            O número de lados da forma geralmente influencia quais notas estão disponíveis. O raio da forma afeta a velocidade (volume) das notas.
+        </li>
+      </ul>
+      <p><strong>Modos de Operação (Alternado por botão, não implementado ainda via UI, mas presente no código):</strong></p>
+      <ul>
+        <li><code>one_person</code>: Uma pessoa controla uma forma principal usando ambas as mãos para gestos mais complexos (mão esquerda para lados, direita para liquify, ambas para raio).</li>
+        <li><code>two_persons</code>: Duas "pessoas" (ou duas mãos independentes) controlam duas formas separadas. A mão esquerda de cada "pessoa" controla os lados da sua forma, e a mão direita controla o "liquify".</li>
+      </ul>
+
+      <hr>
+      <h4>Solução de Problemas Comuns</h4>
+      <ul>
+        <li><strong>Sem som (Áudio Interno):</strong>
+            <ul>
+                <li>Verifique se "🔊 Áudio Interno" está ON.</li>
+                <li>Clique na página ou pressione uma tecla para ativar o áudio do navegador.</li>
+                <li>Aumente o "Volume Master" em "⚙️ Configurações".</li>
+                <li>Verifique se a saída de som do seu computador está funcionando e não está no mudo.</li>
+            </ul>
+        </li>
+        <li><strong>Sem som (MIDI):</strong>
+            <ul>
+                <li>Verifique se "🎹 MIDI" está ON.</li>
+                <li>Verifique se uma porta de Saída MIDI válida está selecionada em "⚙️ Configurações".</li>
+                <li>Confirme se seu DAW/sintetizador está configurado para receber MIDI da porta selecionada e do canal correto (Forma 1 usa Canal 1, Forma 2 usa Canal 2 por padrão).</li>
+            </ul>
+        </li>
+        <li><strong>Câmera não funciona:</strong>
+            <ul>
+                <li>Certifique-se de ter concedido permissão à câmera.</li>
+                <li>Verifique se outra aplicação não está usando a câmera.</li>
+                <li>Tente selecionar uma câmera específica em "⚙️ Configurações" se tiver múltiplas.</li>
+                <li>Se falhar, uma animação alternativa será exibida. Você pode usar o "🤖 Simulador" para interagir.</li>
+            </ul>
+        </li>
+        <li><strong>OSC não conecta:</strong>
+            <ul>
+                <li>Verifique se o IP e Porta em "📡 OSC Config" estão corretos.</li>
+                <li>Certifique-se que o script <code>osc_relayXX.py</code> (ou seu servidor OSC) está rodando e escutando no IP/Porta corretos (geralmente <code>0.0.0.0</code> para o IP no script Python, para aceitar conexões de qualquer origem na sua rede local).</li>
+                <li>Verifique as configurações de firewall.</li>
+                <li>Use o botão "Reconnect OSC" no HUD se a conexão cair.</li>
+            </ul>
+        </li>
+        <li><strong>Gestos não são detectados corretamente:</strong>
+            <ul>
+                <li>Garanta boa iluminação e um fundo contrastante com suas mãos.</li>
+                <li>Mantenha as mãos claramente visíveis para a câmera.</li>
+                <li>Consulte a seção "Gestos" para entender como cada controle funciona.</li>
+            </ul>
+        </li>
+      </ul>
+
+      <hr>
+      <h4>Atalhos de Teclado (Padrão)</h4>
+      <ul>
+        <li><code>Shift + I</code>: Abrir/Fechar Manual do Usuário</li>
+        <li><code>Shift + C</code>: Abrir/Fechar Configurações</li>
+        <li><code>Shift + A</code>: Abrir/Fechar Configurações do Arpejador</li>
+        <li><code>Shift + K</code>: Abrir/Fechar Configurações OSC</li>
+        <li><code>Shift + V</code>: Alternar Áudio Interno ON/OFF (Novo na v45!)</li>
+        <li><code>M</code>: Alternar Envio MIDI ON/OFF</li>
+        <li><code>Shift + D</code>: Alternar Sync DMX ON/OFF</li>
+        <li><code>Shift + R</code>: Iniciar/Parar Gravação de Loop OSC</li>
+        <li><code>Shift + P</code>: Tocar/Parar Loop OSC Gravado</li>
+        <li><code>Shift + B</code>: Abrir/Fechar Gerenciador de Presets</li>
+        <li><code>Shift + F</code>: Alternar Feedback MIDI para OSC (MIDI In) ON/OFF</li>
+        <li><code>Shift + S</code>: Alternar Modo Espectador ON/OFF</li>
+        <li><code>Shift + T</code>: Alternar Tema Claro/Escuro</li>
+        <li><code>Esc</code>: Fechar modais abertos / Remover foco de inputs.</li>
+        </ul>
+        <p><em>Nota: Alguns atalhos podem ser reconfigurados ou adicionados em futuras versões.</em></p>
+
+      <hr>
+      <h4>Histórico de Versões Anteriores (Resumido)</h4>
+      <p><strong>v44:</strong> Correção na animação de fallback da câmera.</p>
+      <p><strong>v43:</strong> Correção de erro de sintaxe JavaScript, melhoria no botão Info HUD.</p>
+      <p><strong>v42:</strong> HUD reposicionado, botão Info HUD adicionado.</p>
+      <p><em>(Para detalhes de versões mais antigas, consulte commits anteriores no repositório.)</em></p>
+
       <div class="modal-footer">
         <p>Desenvolvido por <a href="https://www.instagram.com/leocarvalho.exe" target="_blank" rel="noopener noreferrer">Leonardo Carvalho</a> — 2024</p>
       </div>
@@ -404,7 +574,19 @@
       <select id="cameraSelect">
         <option value="">Padrão do Navegador</option>
       </select>
-      <div class="modal-footer"><p>As configurações são aplicadas em tempo real.</p></div>
+      <hr>
+      <h4>Configurações de Áudio Interno</h4>
+      <label for="audioWaveformSelect">Forma de Onda:</label>
+      <select id="audioWaveformSelect">
+        <option value="sine">Sine (Senoidal)</option>
+        <option value="square">Square (Quadrada)</option>
+        <option value="sawtooth">Sawtooth (Dente de Serra)</option>
+        <option value="triangle">Triangle (Triangular)</option>
+      </select>
+      <label for="audioMasterVolume">Volume Master: <span id="audioMasterVolumeValue" class="value-display">0.5</span></label>
+      <input type="range" id="audioMasterVolume" min="0" max="1" step="0.01" value="0.5">
+
+      <div class="modal-footer"><p>As configurações de MIDI, Câmera e Áudio são aplicadas e salvas automaticamente.</p></div>
     </div>
   </div>
 
