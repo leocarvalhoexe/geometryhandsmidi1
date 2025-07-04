@@ -184,6 +184,20 @@ const audioWaveformSelect = document.getElementById('audioWaveformSelect');
 const audioMasterVolumeSlider = document.getElementById('audioMasterVolume');
 const audioMasterVolumeValueSpan = document.getElementById('audioMasterVolumeValue');
 
+// --- Elementos DOM para ADSR (v47.1) ---
+const audioAttackSlider = document.getElementById('audioAttackSlider');
+const audioAttackValueSpan = document.getElementById('audioAttackValue');
+const audioDecaySlider = document.getElementById('audioDecaySlider');
+const audioDecayValueSpan = document.getElementById('audioDecayValue');
+const audioSustainSlider = document.getElementById('audioSustainSlider');
+const audioSustainValueSpan = document.getElementById('audioSustainValue');
+const audioReleaseSlider = document.getElementById('audioReleaseSlider');
+const audioReleaseValueSpan = document.getElementById('audioReleaseValue');
+
+// --- Elementos DOM para Distorção (v47.1) ---
+const audioDistortionSlider = document.getElementById('audioDistortionSlider');
+const audioDistortionValueSpan = document.getElementById('audioDistortionValue');
+
 let currentCameraDeviceId = null;
 let mediaStream = null;
 let hands; 
@@ -983,6 +997,15 @@ function setupEventListeners() {
     if (audioWaveformSelect) audioWaveformSelect.addEventListener('change', (e) => { const synth = getSimpleSynthInstance(); if(synth) synth.setWaveform(e.target.value); saveAllPersistentSettings(); updateHUD(); });
     if (audioMasterVolumeSlider) audioMasterVolumeSlider.addEventListener('input', (e) => { const volume = parseFloat(e.target.value); const synth = getSimpleSynthInstance(); if(synth) synth.setMasterVolume(volume); if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = volume.toFixed(2); saveAllPersistentSettings(); /* Não precisa de updateHUD() aqui, pois não mostra volume no HUD */ });
     
+    // --- Listeners para ADSR (v47.1) ---
+    if (audioAttackSlider) audioAttackSlider.addEventListener('input', (e) => { const value = parseFloat(e.target.value); const synth = getSimpleSynthInstance(); if (synth) synth.setAttack(value); if (audioAttackValueSpan) audioAttackValueSpan.textContent = `${value.toFixed(3)}s`; saveAllPersistentSettings(); });
+    if (audioDecaySlider) audioDecaySlider.addEventListener('input', (e) => { const value = parseFloat(e.target.value); const synth = getSimpleSynthInstance(); if (synth) synth.setDecay(value); if (audioDecayValueSpan) audioDecayValueSpan.textContent = `${value.toFixed(3)}s`; saveAllPersistentSettings(); });
+    if (audioSustainSlider) audioSustainSlider.addEventListener('input', (e) => { const value = parseFloat(e.target.value); const synth = getSimpleSynthInstance(); if (synth) synth.setSustain(value); if (audioSustainValueSpan) audioSustainValueSpan.textContent = value.toFixed(2); saveAllPersistentSettings(); });
+    if (audioReleaseSlider) audioReleaseSlider.addEventListener('input', (e) => { const value = parseFloat(e.target.value); const synth = getSimpleSynthInstance(); if (synth) synth.setRelease(value); if (audioReleaseValueSpan) audioReleaseValueSpan.textContent = `${value.toFixed(3)}s`; saveAllPersistentSettings(); });
+
+    // --- Listener para Distorção (v47.1) ---
+    if (audioDistortionSlider) audioDistortionSlider.addEventListener('input', (e) => { const value = parseFloat(e.target.value); const synth = getSimpleSynthInstance(); if (synth) synth.setDistortion(value); if (audioDistortionValueSpan) audioDistortionValueSpan.textContent = `${value.toFixed(0)}%`; saveAllPersistentSettings(); });
+
     document.addEventListener('keydown', handleKeyPress);
     logDebug("Ouvintes de eventos configurados.");
 }
@@ -1102,8 +1125,15 @@ function saveAllPersistentSettings(){
   savePersistentSetting('internalAudioEnabled', internalAudioEnabled); // v45
   const currentSimpleSynth = getSimpleSynthInstance();
   if(currentSimpleSynth) {
-    savePersistentSetting('audioWaveform', currentSimpleSynth.waveform); // v45
-    savePersistentSetting('audioMasterVolume', currentSimpleSynth.masterGainNode.gain.value); // v45
+    savePersistentSetting('audioWaveform', currentSimpleSynth.waveform);
+    savePersistentSetting('audioMasterVolume', currentSimpleSynth.masterGainNode.gain.value);
+    // ADSR v47.1
+    savePersistentSetting('audioAttack', currentSimpleSynth.attackTime);
+    savePersistentSetting('audioDecay', currentSimpleSynth.decayTime);
+    savePersistentSetting('audioSustain', currentSimpleSynth.sustainLevel);
+    savePersistentSetting('audioRelease', currentSimpleSynth.releaseTime);
+    // Distorção v47.1
+    savePersistentSetting('audioDistortion', currentSimpleSynth.distortionAmount);
   }
   savePersistentSetting('dmxSyncModeActive',dmxSyncModeActive);
   savePersistentSetting('midiFeedbackEnabled',midiFeedbackEnabled);
@@ -1119,9 +1149,16 @@ function saveAllPersistentSettings(){
 function loadAllPersistentSettings(){
   operationMode = loadPersistentSetting('operationMode','two_persons');
   midiEnabled = loadPersistentSetting('midiEnabled',true);
-  internalAudioEnabled = loadPersistentSetting('internalAudioEnabled', true); // v45
-  const savedWaveform = loadPersistentSetting('audioWaveform', 'sine'); // v45
-  const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5); // v45
+  internalAudioEnabled = loadPersistentSetting('internalAudioEnabled', true);
+  const savedWaveform = loadPersistentSetting('audioWaveform', 'sine');
+  const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5);
+  // ADSR v47.1 - Carregar valores, defaults correspondem aos do SimpleSynth
+  const savedAttack = loadPersistentSetting('audioAttack', 0.01);
+  const savedDecay = loadPersistentSetting('audioDecay', 0.1);
+  const savedSustain = loadPersistentSetting('audioSustain', 0.7);
+  const savedRelease = loadPersistentSetting('audioRelease', 0.2);
+  // Distorção v47.1 - Carregar valor, default 0
+  const savedDistortion = loadPersistentSetting('audioDistortion', 0);
 
   dmxSyncModeActive = loadPersistentSetting('dmxSyncModeActive',false);
   midiFeedbackEnabled = loadPersistentSetting('midiFeedbackEnabled',false);
@@ -1138,12 +1175,34 @@ function loadAllPersistentSettings(){
   if (audioWaveformSelect) audioWaveformSelect.value = savedWaveform;
   const currentSimpleSynth = getSimpleSynthInstance();
   if (currentSimpleSynth) {
-    currentSimpleSynth.setWaveform(savedWaveform); // Aplica ao synth se já instanciado
-    currentSimpleSynth.setMasterVolume(savedMasterVolume); // Aplica ao synth
+    currentSimpleSynth.setWaveform(savedWaveform);
+    currentSimpleSynth.setMasterVolume(savedMasterVolume);
+    // ADSR v47.1 - Aplicar ao synth se já instanciado
+    currentSimpleSynth.setAttack(savedAttack);
+    currentSimpleSynth.setDecay(savedDecay);
+    currentSimpleSynth.setSustain(savedSustain);
+    currentSimpleSynth.setRelease(savedRelease);
+    // Distorção v47.1
+    currentSimpleSynth.setDistortion(savedDistortion);
   }
   
+  // Atualizar UI para Master Volume
   if (audioMasterVolumeSlider) audioMasterVolumeSlider.value = savedMasterVolume;
   if (audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = savedMasterVolume.toFixed(2);
+
+  // ADSR v47.1 - Atualizar UI para ADSR
+  if (audioAttackSlider) audioAttackSlider.value = savedAttack;
+  if (audioAttackValueSpan) audioAttackValueSpan.textContent = `${savedAttack.toFixed(3)}s`;
+  if (audioDecaySlider) audioDecaySlider.value = savedDecay;
+  if (audioDecayValueSpan) audioDecayValueSpan.textContent = `${savedDecay.toFixed(3)}s`;
+  if (audioSustainSlider) audioSustainSlider.value = savedSustain;
+  if (audioSustainValueSpan) audioSustainValueSpan.textContent = savedSustain.toFixed(2);
+  if (audioReleaseSlider) audioReleaseSlider.value = savedRelease;
+  if (audioReleaseValueSpan) audioReleaseValueSpan.textContent = `${savedRelease.toFixed(3)}s`;
+
+  // Distorção v47.1 - Atualizar UI
+  if (audioDistortionSlider) audioDistortionSlider.value = savedDistortion;
+  if (audioDistortionValueSpan) audioDistortionValueSpan.textContent = `${savedDistortion.toFixed(0)}%`;
 
   loadOscSettings(); // Carrega OSC_HOST e OSC_PORT
   loadArpeggioSettings(); // Carrega configurações de arpejo
@@ -1230,12 +1289,39 @@ window.addEventListener('DOMContentLoaded', () => {
                     // Aplica configurações salvas caso o synth tenha sido criado neste momento
                     const vol = parseFloat(loadPersistentSetting('audioMasterVolume', 0.5));
                     const wave = loadPersistentSetting('audioWaveform', 'sine');
+                    // ADSR v47.1 - Carregar e aplicar
+                    const attack = parseFloat(loadPersistentSetting('audioAttack', 0.01));
+                    const decay = parseFloat(loadPersistentSetting('audioDecay', 0.1));
+                    const sustain = parseFloat(loadPersistentSetting('audioSustain', 0.7));
+                    const release = parseFloat(loadPersistentSetting('audioRelease', 0.2));
+                    const distortion = parseFloat(loadPersistentSetting('audioDistortion', 0)); // Distorção v47.1
+
                     synthAfterGesture.setMasterVolume(vol);
                     synthAfterGesture.setWaveform(wave);
+                    synthAfterGesture.setAttack(attack);
+                    synthAfterGesture.setDecay(decay);
+                    synthAfterGesture.setSustain(sustain);
+                    synthAfterGesture.setRelease(release);
+                    synthAfterGesture.setDistortion(distortion); // Distorção v47.1
+
+                    // Atualizar UI também, caso não tenha sido feito antes
                     if(audioMasterVolumeSlider) audioMasterVolumeSlider.value = vol;
                     if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = vol.toFixed(2);
                     if(audioWaveformSelect) audioWaveformSelect.value = wave;
-                    console.log("Áudio inicializado/resumido por gesto e synth configurado.");
+
+                    if(audioAttackSlider) audioAttackSlider.value = attack;
+                    if(audioAttackValueSpan) audioAttackValueSpan.textContent = `${attack.toFixed(3)}s`;
+                    if(audioDecaySlider) audioDecaySlider.value = decay;
+                    if(audioDecayValueSpan) audioDecayValueSpan.textContent = `${decay.toFixed(3)}s`;
+                    if(audioSustainSlider) audioSustainSlider.value = sustain;
+                    if(audioSustainValueSpan) audioSustainValueSpan.textContent = sustain.toFixed(2);
+                    if(audioReleaseSlider) audioReleaseSlider.value = release;
+                    if(audioReleaseValueSpan) audioReleaseValueSpan.textContent = `${release.toFixed(3)}s`;
+
+                    if(audioDistortionSlider) audioDistortionSlider.value = distortion; // Distorção v47.1
+                    if(audioDistortionValueSpan) audioDistortionValueSpan.textContent = `${distortion.toFixed(0)}%`; // Distorção v47.1
+
+                    console.log("Áudio inicializado/resumido por gesto e synth (incluindo ADSR e Distorção) configurado.");
                 } else {
                     console.error("Falha ao obter instância do SimpleSynth após initAudioContextOnGesture.");
                 }

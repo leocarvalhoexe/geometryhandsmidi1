@@ -585,6 +585,27 @@
       </select>
       <label for="audioMasterVolume">Volume Master: <span id="audioMasterVolumeValue" class="value-display">0.5</span></label>
       <input type="range" id="audioMasterVolume" min="0" max="1" step="0.01" value="0.5">
+
+      <!-- Controles ADSR -->
+      <h5>Envelope ADSR</h5>
+      <label for="audioAttackSlider">Attack: <span id="audioAttackValue" class="value-display">0.01</span>s</label>
+      <input type="range" id="audioAttackSlider" min="0.001" max="2" step="0.001" value="0.01">
+
+      <label for="audioDecaySlider">Decay: <span id="audioDecayValue" class="value-display">0.1</span>s</label>
+      <input type="range" id="audioDecaySlider" min="0.001" max="2" step="0.001" value="0.1">
+
+      <label for="audioSustainSlider">Sustain Level: <span id="audioSustainValue" class="value-display">0.7</span></label>
+      <input type="range" id="audioSustainSlider" min="0" max="1" step="0.01" value="0.7">
+
+      <label for="audioReleaseSlider">Release: <span id="audioReleaseValue" class="value-display">0.2</span>s</label>
+      <input type="range" id="audioReleaseSlider" min="0.001" max="3" step="0.001" value="0.2">
+      <!-- Fim Controles ADSR -->
+
+      <!-- Controle de Distorção -->
+      <h5>Efeitos</h5>
+      <label for="audioDistortionSlider">Distorção: <span id="audioDistortionValue" class="value-display">0</span>%</label>
+      <input type="range" id="audioDistortionSlider" min="0" max="100" step="1" value="0">
+      <!-- Fim Controle de Distorção -->
       
       <div class="modal-footer"><p>As configurações de MIDI, Câmera e Áudio são aplicadas e salvas automaticamente.</p></div>
     </div>

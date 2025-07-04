@@ -25,7 +25,80 @@ class SimpleSynth {
     this.masterGainNode.gain.value = 0.5; // Volume master padrão
     this.masterGainNode.connect(this.audioCtx.destination);
     this.waveform = 'sine'; // Forma de onda padrão
-    console.log("SimpleSynth v47 inicializado com AudioContext");
+
+    // ADSR Properties
+    this.attackTime = 0.01;
+    this.decayTime = 0.1;
+    this.sustainLevel = 0.7;
+    this.releaseTime = 0.2;
+
+    // Distortion (WaveShaper) Properties
+    this.distortionNode = this.audioCtx.createWaveShaper();
+    this.distortionNode.oversample = '4x'; // '2x' ou 'none' também são opções
+    this.distortionAmount = 0; // 0 = sem distorção, aumenta para mais distorção
+    this._updateDistortionCurve(); // Inicializa a curva
+
+    // Conexão: distortionNode -> masterGainNode
+    this.distortionNode.connect(this.masterGainNode);
+
+    console.log("SimpleSynth v47 inicializado com AudioContext, ADSR padrão e DistortionNode.");
+  }
+
+  _updateDistortionCurve() {
+    const k = typeof this.distortionAmount === 'number' ? this.distortionAmount : 0;
+    const n_samples = 44100; // Número de amostras para a curva, pode ser ajustado
+    const curve = new Float32Array(n_samples);
+    const deg = Math.PI / 180;
+
+    if (k === 0) { // Sem distorção, curva linear
+        for (let i = 0; i < n_samples; ++i) {
+            const x = (i * 2 / n_samples) - 1; // Mapeia i para o intervalo [-1, 1]
+            curve[i] = x;
+        }
+    } else {
+        // Fórmula de distorção (exemplo simples, pode ser mais complexa)
+        // Esta é uma curva de saturação suave, k controla a "dureza" da saturação.
+        // Valores maiores de k resultarão em um hard clipping mais cedo.
+        // Para k pequenos, a curva é quase linear.
+        const effectiveK = k * 5; // Amplifica o efeito do 'amount' para que 0-100 seja mais perceptível
+        for (let i = 0; i < n_samples; ++i) {
+            const x = (i * 2 / n_samples) - 1;
+            curve[i] = (Math.PI/2 + effectiveK) * x / (Math.PI/2 + effectiveK * Math.abs(x));
+            // Normaliza para garantir que não exceda [-1, 1] se a fórmula puder
+            curve[i] = Math.max(-1, Math.min(1, curve[i]));
+        }
+    }
+    this.distortionNode.curve = curve;
+    // console.log(`Distortion curve updated for amount: ${this.distortionAmount}`);
+  }
+
+  setDistortion(amount) { // amount esperado de 0 a 100 (ou outra escala definida na UI)
+    this.distortionAmount = parseFloat(amount);
+    if (isNaN(this.distortionAmount)) this.distortionAmount = 0;
+    this.distortionAmount = Math.max(0, Math.min(100, this.distortionAmount)); // Clamp 0-100
+    this._updateDistortionCurve();
+    console.log(`Synth Distortion Amount set to: ${this.distortionAmount}`);
+  }
+
+  // ADSR Setters
+  setAttack(time) {
+    this.attackTime = Math.max(0.001, time); // Evitar attack zero ou negativo
+    console.log(`Synth Attack Time set to: ${this.attackTime}s`);
+  }
+
+  setDecay(time) {
+    this.decayTime = Math.max(0.001, time); // Evitar decay zero ou negativo
+    console.log(`Synth Decay Time set to: ${this.decayTime}s`);
+  }
+
+  setSustain(level) {
+    this.sustainLevel = Math.max(0, Math.min(1, level)); // Clamp 0-1
+    console.log(`Synth Sustain Level set to: ${this.sustainLevel}`);
+  }
+
+  setRelease(time) {
+    this.releaseTime = Math.max(0.001, time); // Evitar release zero ou negativo
+    console.log(`Synth Release Time set to: ${this.releaseTime}s`);
   }
 
   setWaveform(newWaveform) {
@@ -84,20 +157,29 @@ class SimpleSynth {
     osc.frequency.setValueAtTime(freq, this.audioCtx.currentTime);
 
     // Mapeia a velocidade MIDI (0-127) para ganho (0-1)
-    // Uma curva mais responsiva pode ser usada aqui, ex: Math.pow(velocity / 127, 2)
-    const noteGain = (velocity / 127); 
-    gainNode.gain.setValueAtTime(noteGain, this.audioCtx.currentTime);
-    
-    // Envelope ADSR simples (ataque rápido, sustain total, release rápido)
+    const velocityGain = (velocity / 127);
+    const peakGain = velocityGain; // O pico do attack será o velocityGain
+    const sustainGain = peakGain * this.sustainLevel;
+
     const now = this.audioCtx.currentTime;
-    gainNode.gain.setValueAtTime(0, now); // Inicia em 0
-    gainNode.gain.linearRampToValueAtTime(noteGain, now + 0.01); // Ataque rápido
+    gainNode.gain.cancelScheduledValues(now); // Cancela eventos anteriores para esta nota
+    gainNode.gain.setValueAtTime(0, now); // Inicia em 0 (silêncio)
+
+    // Attack
+    gainNode.gain.linearRampToValueAtTime(peakGain, now + this.attackTime);
+
+    // Decay
+    // Se sustainLevel for 1.0, decayTime efetivamente não tem efeito visível no nível,
+    // mas a rampa ainda é agendada.
+    gainNode.gain.linearRampToValueAtTime(sustainGain, now + this.attackTime + this.decayTime);
 
     osc.connect(gainNode);
-    gainNode.connect(this.masterGainNode);
+    // Conexão alterada: gainNode -> distortionNode -> masterGainNode
+    // A conexão distortionNode -> masterGainNode já foi feita no construtor.
+    gainNode.connect(this.distortionNode);
     osc.start(now);
 
-    this.oscillators[midiNote] = { osc, gainNode, velocityGain: noteGain };
+    this.oscillators[midiNote] = { osc, gainNode }; // velocityGain não é mais armazenado aqui
     // console.log(`Synth Note ON: ${midiNote}, Freq: ${freq.toFixed(2)}, VelGain: ${noteGain.toFixed(2)}`);
   }
 
@@ -119,41 +201,58 @@ class SimpleSynth {
     }
 
     if (this.oscillators[midiNote]) {
-      const { osc, gainNode, velocityGain } = this.oscillators[midiNote];
+      const { osc, gainNode } = this.oscillators[midiNote]; // velocityGain não é mais necessário aqui
       const now = this.audioCtx.currentTime;
       
-      gainNode.gain.setValueAtTime(gainNode.gain.value, now); 
-      gainNode.gain.linearRampToValueAtTime(0, now + 0.1); 
+      // Release phase
+      gainNode.gain.cancelScheduledValues(now); // Cancela decay/sustain
+      gainNode.gain.setValueAtTime(gainNode.gain.value, now); // Mantém o valor atual do ganho
+      gainNode.gain.linearRampToValueAtTime(0, now + this.releaseTime); // Rampa para 0 durante o releaseTime
 
-      osc.stop(now + 0.11); 
+      osc.stop(now + this.releaseTime + 0.01); // Adiciona um pequeno buffer para garantir que o som pare após o release
       
+      // Limpa o oscilador após o tempo de release
+      // Usamos um timeout para garantir que o oscilador seja removido da lista
+      // somente após ter tido tempo de parar completamente.
       setTimeout(() => {
         if (this.oscillators[midiNote] && this.oscillators[midiNote].osc === osc) {
-          gainNode.disconnect();
+          gainNode.disconnect(); // Desconecta o gainNode para liberar recursos
           delete this.oscillators[midiNote];
         }
-      }, 120); 
-      // console.log(`Synth Note OFF: ${midiNote}`);
+      }, (this.releaseTime + 0.05) * 1000); // +50ms de margem
+      // console.log(`Synth Note OFF: ${midiNote}, Release Time: ${this.releaseTime}s`);
     }
   }
 
   allNotesOff() {
-    console.log("Synth v47 All Notes Off");
+    console.log("Synth v47 All Notes Off (ADSR aware)");
     const now = this.audioCtx.currentTime;
     for (const midiNote in this.oscillators) {
       if (this.oscillators.hasOwnProperty(midiNote)) {
         const { osc, gainNode } = this.oscillators[midiNote];
         gainNode.gain.cancelScheduledValues(now);
-        gainNode.gain.setValueAtTime(gainNode.gain.value, now); // Pega o valor atual antes de rampar
-        gainNode.gain.linearRampToValueAtTime(0, now + 0.05); 
-        osc.stop(now + 0.06);
+        // Em vez de um release rápido fixo, idealmente respeitaria this.releaseTime,
+        // mas para um "panic" (allNotesOff), um release rápido é geralmente preferível.
+        // Vamos usar um release curto e fixo aqui para garantir que as notas parem rapidamente.
+        const quickRelease = 0.05;
+        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+        gainNode.gain.linearRampToValueAtTime(0, now + quickRelease);
+        osc.stop(now + quickRelease + 0.01);
         
+        // Agendamos a limpeza do oscilador
+        // É importante capturar 'osc' e 'gainNode' em um closure se usarmos setTimeout dentro de um loop
+        // ou garantir que a referência correta seja usada.
+        // Neste caso, o setTimeout é para cada nota individualmente.
+        const currentOsc = osc;
+        const currentGainNode = gainNode;
+        const currentMidiNote = midiNote; // Captura o midiNote para o delete
         setTimeout(() => {
-            if (this.oscillators[midiNote] && this.oscillators[midiNote].osc === osc) {
-                gainNode.disconnect();
-                delete this.oscillators[midiNote];
+            // Verifica se o oscilador ainda é o mesmo, pois um novo noteOn pode ter substituído
+            if (this.oscillators[currentMidiNote] && this.oscillators[currentMidiNote].osc === currentOsc) {
+                currentGainNode.disconnect();
+                delete this.oscillators[currentMidiNote];
             }
-        }, 70);
+        }, (quickRelease + 0.05) * 1000);
       }
     }
   }
