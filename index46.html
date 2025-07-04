@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MIDI Shape Manipulator v44</title> <!-- Version Update -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js?v=44"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js?v=44"></script>
+  <title>MIDI Shape Manipulator v46</title> <!-- Version Update -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js?v=46"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js?v=46"></script>
   <style>
     html, body { height: 100%; margin: 0; /* overflow: hidden; */ /* Allow body scroll if sidebar content is too tall and sidebar is fixed */ }
     body { background: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; color: #eee; position: relative; }
@@ -364,12 +364,18 @@
   <div id="infoModal" class="modal-overlay">
     <div class="modal-content">
       <button id="closeModal" class="close-modal-button" title="Fechar">&times;</button>
-      <h3>Manual do Usuário - MIDI Shape Manipulator v45</h3>
-      
+      <h3>Manual do Usuário - MIDI Shape Manipulator v46</h3>
+
       <h4>Visão Geral</h4>
       <p>O MIDI Shape Manipulator é uma aplicação web interativa que transforma seus gestos de mão, capturados pela webcam, em música e visualizações dinâmicas. Controle formas geométricas na tela, gere notas MIDI, mensagens OSC e, agora, som diretamente no navegador!</p>
       <p>Ideal para performances audiovisuais, exploração sonora e aprendizado sobre interação gestual.</p>
 
+      <hr>
+      <h4>Novidades da v46</h4>
+      <ul>
+        <li><strong>Sintetizador Modularizado:</strong> O código do sintetizador de áudio interno (<code>SimpleSynth</code>) foi movido para um arquivo separado (<code>synth46.js</code>). Isso melhora a organização do código e facilita futuras manutenções ou substituições do motor de áudio.</li>
+        <li>Atualizações gerais de estrutura e código para a v46.</li>
+      </ul>
       <hr>
       <h4>Novidades da v45</h4>
       <ul>
@@ -382,7 +388,6 @@
         </li>
         <li>As configurações de Áudio Interno (estado, forma de onda, volume) são salvas localmente.</li>
         <li>Indicador de status do Áudio Interno e forma de onda adicionados ao HUD.</li>
-        <li>Atualizações gerais de estrutura e código para a v45.</li>
       </ul>
 
       <hr>
@@ -444,7 +449,7 @@
         <li><strong>🌙 Tema:</strong> Alterna entre tema claro e escuro (<code>Shift+T</code>).</li>
         <li><strong>🤖 Simulador:</strong> Ativa/Desativa um modo de simulação de gestos, útil para desenvolvimento ou quando uma câmera não está disponível.</li>
       </ul>
-      
+
       <hr>
       <h4>Gestos e Interação com as Formas</h4>
       <p>O sistema detecta até duas mãos (dependendo do modo de operação). Cada mão (ou par de mãos, no modo "one_person") pode controlar uma forma geométrica.</p>
@@ -483,7 +488,7 @@
         <li><code>one_person</code>: Uma pessoa controla uma forma principal usando ambas as mãos para gestos mais complexos (mão esquerda para lados, direita para liquify, ambas para raio).</li>
         <li><code>two_persons</code>: Duas "pessoas" (ou duas mãos independentes) controlam duas formas separadas. A mão esquerda de cada "pessoa" controla os lados da sua forma, e a mão direita controla o "liquify".</li>
       </ul>
-      
+
       <hr>
       <h4>Solução de Problemas Comuns</h4>
       <ul>
@@ -526,7 +531,7 @@
             </ul>
         </li>
       </ul>
-      
+
       <hr>
       <h4>Atalhos de Teclado (Padrão)</h4>
       <ul>
@@ -534,7 +539,7 @@
         <li><code>Shift + C</code>: Abrir/Fechar Configurações</li>
         <li><code>Shift + A</code>: Abrir/Fechar Configurações do Arpejador</li>
         <li><code>Shift + K</code>: Abrir/Fechar Configurações OSC</li>
-        <li><code>Shift + V</code>: Alternar Áudio Interno ON/OFF (Novo na v45!)</li>
+        <li><code>Shift + V</code>: Alternar Áudio Interno ON/OFF</li>
         <li><code>M</code>: Alternar Envio MIDI ON/OFF</li>
         <li><code>Shift + D</code>: Alternar Sync DMX ON/OFF</li>
         <li><code>Shift + R</code>: Iniciar/Parar Gravação de Loop OSC</li>
@@ -549,11 +554,12 @@
 
       <hr>
       <h4>Histórico de Versões Anteriores (Resumido)</h4>
+      <p><strong>v45:</strong> Funcionalidade de áudio interno adicionada. Correções de bugs e melhorias gerais.</p>
       <p><strong>v44:</strong> Correção na animação de fallback da câmera.</p>
       <p><strong>v43:</strong> Correção de erro de sintaxe JavaScript, melhoria no botão Info HUD.</p>
       <p><strong>v42:</strong> HUD reposicionado, botão Info HUD adicionado.</p>
       <p><em>(Para detalhes de versões mais antigas, consulte commits anteriores no repositório.)</em></p>
-      
+
       <div class="modal-footer">
         <p>Desenvolvido por <a href="https://www.instagram.com/leocarvalho.exe" target="_blank" rel="noopener noreferrer">Leonardo Carvalho</a> — 2024</p>
       </div>
@@ -585,7 +591,7 @@
       </select>
       <label for="audioMasterVolume">Volume Master: <span id="audioMasterVolumeValue" class="value-display">0.5</span></label>
       <input type="range" id="audioMasterVolume" min="0" max="1" step="0.01" value="0.5">
-      
+
       <div class="modal-footer"><p>As configurações de MIDI, Câmera e Áudio são aplicadas e salvas automaticamente.</p></div>
     </div>
   </div>
@@ -645,8 +651,9 @@
 
   <!-- <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script> --> <!-- Movido para o HEAD -->
   <!-- <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script> --> <!-- Movido para o HEAD -->
-  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js?v=44"></script>
-  <script src="main45.js" defer></script> <!-- ATUALIZADO PARA main45.js -->
+  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js?v=46"></script>
+  <!-- <script src="synth46.js" defer></script> --> <!-- Script do Sintetizador (Temporariamente Comentado para Teste) -->
+  <script src="main46.js" defer></script> <!-- ATUALIZADO PARA main46.js -->
   <div id="hud"> <!-- HUD é visível por padrão, JS controlará a classe .hidden -->
     <button id="reconnectOSCButton" class="control-button">Reconnect OSC</button>
   </div>

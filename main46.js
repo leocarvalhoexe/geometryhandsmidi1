@@ -1,5 +1,5 @@
 // ==========================================================================
-// MIDI SHAPE MANIPULATOR v45 - main45.js
+// MIDI SHAPE MANIPULATOR v46 - main46.js
 // ==========================================================================
 
 // === DEBUGGING ===
@@ -109,9 +109,16 @@ let currentTheme = 'theme-dark';
 const THEME_STORAGE_KEY = 'midiShapeThemeV35'; // Mantendo v35
 const PRESETS_STORAGE_KEY = 'midiShapePresetsV35'; // Mantendo v35
 let shapePresets = {};
-const APP_SETTINGS_KEY = 'midiShapeManipulatorV45Settings'; // ATUALIZADO para v45
-const ARPEGGIO_SETTINGS_KEY = 'arpeggioSettingsV45'; // ATUALIZADO para v45
+const APP_SETTINGS_KEY = 'midiShapeManipulatorV46Settings'; // ATUALIZADO para v46
+const ARPEGGIO_SETTINGS_KEY = 'arpeggioSettingsV46'; // ATUALIZADO para v46
 const CAMERA_DEVICE_ID_KEY = 'midiShapeCameraDeviceIdV36'; // Mantendo v36
+
+// Variáveis de estado para áudio interno (controladas por main46.js)
+let internalAudioEnabled = true;
+// As instâncias de audioCtx e simpleSynth serão obtidas de synth46.js
+// let audioCtx = null; // Movido para synth46.js
+// let simpleSynth = null; // Movido para synth46.js
+
 
 // DOM Elements
 const hudElement = document.getElementById('hud');
@@ -179,8 +186,8 @@ const audioMasterVolumeValueSpan = document.getElementById('audioMasterVolumeVal
 
 let currentCameraDeviceId = null;
 let mediaStream = null;
-let hands; 
-let camera; 
+let hands;
+let camera;
 
 let outputPopupWindow = null;
 let popupCanvasCtx = null;
@@ -404,14 +411,14 @@ async function initializeCamera(deviceId = null) {
     logDebug(`Tentando inicializar câmera. Device ID: ${deviceId || 'Padrão'}`);
     console.log(`Inicializando câmera com deviceId: ${deviceId || 'Padrão'}`); cameraError = false;
     if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
-    
+
     if (camera && typeof camera.stop === 'function') {
-        try { 
-          await camera.stop(); 
+        try {
+          await camera.stop();
         } catch(e) {
           console.warn("Erro ao parar câmera anterior:", e);
         }
-        camera = null; 
+        camera = null;
     }
 
     try {
@@ -421,7 +428,7 @@ async function initializeCamera(deviceId = null) {
         console.log("Solicitando permissão da câmera com constraints:", constraints);
         mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
         console.log("Permissão da câmera obtida. MediaStream:", mediaStream);
-        
+
         if (videoElement) {
             videoElement.srcObject = mediaStream;
             console.log("videoElement.srcObject atribuído.");
@@ -437,7 +444,7 @@ async function initializeCamera(deviceId = null) {
                         reject(e);
                     });
                 };
-                videoElement.onerror = (e) => { 
+                videoElement.onerror = (e) => {
                     console.error("Erro no elemento de vídeo (onerror):", e);
                     cameraError = true;
                     reject(e);
@@ -452,46 +459,46 @@ async function initializeCamera(deviceId = null) {
 
         if (!hands) {
             console.log("Instanciando MediaPipe Hands...");
-            hands = new Hands({ 
+            hands = new Hands({
                 locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
             });
             hands.setOptions({
                 maxNumHands: 2, modelComplexity: 1,
                 minDetectionConfidence: 0.8, minTrackingConfidence: 0.8
             });
-            hands.onResults(onResults); 
+            hands.onResults(onResults);
         } else {
              hands.setOptions({
                 maxNumHands: 2, modelComplexity: 1,
                 minDetectionConfidence: 0.8, minTrackingConfidence: 0.8
             });
         }
-        
+
         console.log("Instanciando MediaPipe Camera...");
         camera = new Camera(videoElement, {
             onFrame: async () => {
                 if (gestureSimulationActive || cameraError || !videoElement || videoElement.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
                     if (cameraError && !gestureSimulationActive) {
                         drawFallbackAnimation(); // CHAMADA CORRIGIDA
-                        updateHUD(); 
+                        updateHUD();
                     }
                     return;
                 }
-                if (hands && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) { 
+                if (hands && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
                     try {
                         await hands.send({ image: videoElement });
                     } catch (e) {
                         console.error("Erro ao enviar frame para hands.send:", e);
-                        cameraError = true; 
+                        cameraError = true;
                     }
                 }
             },
             width: 640, height: 480
         });
-        
+
         console.log("Iniciando MediaPipe Camera (camera.start())...");
-        await camera.start(); 
-        
+        await camera.start();
+
         console.log("Camera e MediaPipe inicializados com sucesso.");
         logDebug("Câmera e MediaPipe inicializados com sucesso.", { deviceId: deviceId });
         currentCameraDeviceId = deviceId;
@@ -512,7 +519,7 @@ async function initializeCamera(deviceId = null) {
                 console.warn("Erro ao tentar parar MediaPipe Camera após falha:", e);
             }
         }
-        camera = null; 
+        camera = null;
         // A animação de fallback será desenhada pelo animationLoop se cameraError for true
     }
 }
@@ -540,7 +547,7 @@ async function populateCameraSelect() {
                 option.text = device.label || `Câmera ${cameraSelectElement.options.length}`;
                 if (device.deviceId === currentCameraDeviceId) option.selected = true;
                 else if (!currentCameraDeviceId && preferredDeviceId && device.deviceId === preferredDeviceId) {
-                    option.selected = true; currentCameraDeviceId = device.deviceId; 
+                    option.selected = true; currentCameraDeviceId = device.deviceId;
                 }
                 cameraSelectElement.appendChild(option);
             });
@@ -554,7 +561,7 @@ async function populateCameraSelect() {
 
 function onResults(results) {
   logDebug("onResults chamado.", { numHands: results.multiHandLandmarks?.length });
-  ctx.fillStyle = 'rgba(0,0,0,0.08)'; 
+  ctx.fillStyle = 'rgba(0,0,0,0.08)';
   ctx.fillRect(0,0,canvasElement.width, canvasElement.height);
 
   shapes.forEach(s => { s.leftHandLandmarks = null; s.rightHandLandmarks = null; });
@@ -570,7 +577,7 @@ function onResults(results) {
       });
       shapes[0].leftHandLandmarks = lH; shapes[0].rightHandLandmarks = rH;
       if (shapes.length > 1) { shapes[1].leftHandLandmarks = null; shapes[1].rightHandLandmarks = null; }
-    } else { 
+    } else {
       let assignedL = [false,false], assignedR = [false,false];
       results.multiHandLandmarks.forEach((landmarks, i) => {
         if (!spectatorModeActive) drawLandmarks(landmarks, results.multiHandedness[i]?.label); // Passa handedness
@@ -785,13 +792,104 @@ function populateMidiInputSelect() { if(!midiInputSelect) return; const prevId =
 function setMidiInput(inputPort) { if (midiInput) midiInput.onmidimessage = null; midiInput = inputPort; if (midiInput) { midiInput.onmidimessage = handleMidiMessage; console.log("MIDI Input:", midiInput.name); } }
 async function initMidi() { try { if (navigator.requestMIDIAccess) { midiAccess = await navigator.requestMIDIAccess({ sysex: false }); console.log("MIDI Access Granted"); updateMidiDeviceLists(); midiAccess.onstatechange = (e) => { console.log("MIDI state change:", e.port.name, e.port.type, e.port.state); updateMidiDeviceLists(); }; } else console.warn("Web MIDI API não suportada."); } catch (error) { console.error("Não foi possível acessar MIDI.", error); } }
 function handleMidiMessage(event) { if (!midiFeedbackEnabled || spectatorModeActive) return; const cmd = event.data[0] >> 4; const ch = event.data[0] & 0x0F; const data1 = event.data[1]; const data2 = event.data.length > 2 ? event.data[2] : 0; let oscAddr = null, oscArgs = [ch, data1]; if (cmd === 9 && data2 > 0) { oscAddr = '/midi/in/noteOn'; oscArgs.push(data2); } else if (cmd === 8 || (cmd === 9 && data2 === 0)) { oscAddr = '/midi/in/noteOff'; } else if (cmd === 11) { oscAddr = '/midi/in/cc'; oscArgs.push(data2); } else if (cmd === 14) { oscAddr = '/midi/in/pitchbend'; oscArgs = [ch, (data2 << 7) | data1]; } if (oscAddr) { sendOSCMessage(oscAddr, ...oscArgs); logOSC("MIDI->OSC", oscAddr, oscArgs); if (dmxSyncModeActive && (oscAddr === '/midi/in/noteOn' || oscAddr === '/midi/in/noteOff')) { sendOSCMessage('/dmx/note', data1, oscAddr === '/midi/in/noteOn' ? data2 : 0); logOSC("DMX Sync", '/dmx/note', [data1, oscAddr === '/midi/in/noteOn' ? data2 : 0]); } } }
-function sendMidiNoteOn(note, velocity, channel, shapeId = -1) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0, Math.min(15, channel)); const n = Math.max(0, Math.min(127, Math.round(note))); const v = Math.max(0, Math.min(127, Math.round(velocity))); midiOutput.send([0x90 + ch, n, v]); sendOSCMessage(`/forma/${shapeId}/noteOn`, n, v, ch); if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, v); }
-function sendMidiNoteOff(note, channel, shapeId = -1) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0, Math.min(15, channel)); const n = Math.max(0, Math.min(127, Math.round(note))); midiOutput.send([0x80 + ch, n, 0]); sendOSCMessage(`/forma/${shapeId}/noteOff`, n, ch); if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, 0); }
+function sendMidiNoteOn(note, velocity, channel, shapeId = -1) {
+  if (spectatorModeActive) return;
+  const n = Math.max(0, Math.min(127, Math.round(note)));
+  const v = Math.max(0, Math.min(127, Math.round(velocity)));
+  const ch = Math.max(0, Math.min(15, channel));
+
+  if (midiEnabled && midiOutput) {
+    midiOutput.send([0x90 + ch, n, v]);
+  }
+  if (internalAudioEnabled) {
+    const synth = getSimpleSynthInstance();
+    if (synth) synth.noteOn(n, v);
+  }
+  sendOSCMessage(`/forma/${shapeId}/noteOn`, n, v, ch);
+  if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, v);
+}
+
+function sendMidiNoteOff(note, channel, shapeId = -1) {
+  if (spectatorModeActive) return;
+  const n = Math.max(0, Math.min(127, Math.round(note)));
+  const ch = Math.max(0, Math.min(15, channel));
+
+  if (midiEnabled && midiOutput) {
+    midiOutput.send([0x80 + ch, n, 0]);
+  }
+  if (internalAudioEnabled) {
+    const synth = getSimpleSynthInstance();
+    if (synth) synth.noteOff(n);
+  }
+  sendOSCMessage(`/forma/${shapeId}/noteOff`, n, ch);
+  if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, 0);
+}
+
 function sendPitchBend(bendValue, channel) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0,Math.min(15,channel)); const bend = Math.max(0,Math.min(16383,Math.round(bendValue))); midiOutput.send([0xE0+ch, bend & 0x7F, (bend>>7)&0x7F]); }
 function sendMidiCC(cc, value, channel) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0,Math.min(15,channel)); const c = Math.max(0,Math.min(119,Math.round(cc))); const v = Math.max(0,Math.min(127,Math.round(value))); midiOutput.send([0xB0+ch, c, v]); }
-function turnOffAllActiveNotesForShape(shape) { if (spectatorModeActive) return; const origMidiEnabled = midiEnabled; midiEnabled = true; logDebug(`Desligando todas as notas ativas para a forma ${shape.id}`); Object.values(shape.activeMidiNotes).forEach(noteInfo => { if (noteInfo.playing) { sendMidiNoteOff(noteInfo.note, shape.midiChannel, shape.id + 1); } if (noteInfo.staccatoTimer) { clearTimeout(noteInfo.staccatoTimer); } }); shape.activeMidiNotes = {}; midiEnabled = origMidiEnabled; }
-function turnOffAllActiveNotes() { if (spectatorModeActive) return; logDebug("Desligando todas as notas ativas para todas as formas."); const origMidiEnabled = midiEnabled; midiEnabled = true; shapes.forEach(shape => turnOffAllActiveNotesForShape(shape)); midiEnabled = origMidiEnabled; }
-function resetMidiSystem() { if (spectatorModeActive) return; console.log("MIDI Reset."); logDebug("Sistema MIDI Resetado."); turnOffAllActiveNotes(); const origMidiEnabled = midiEnabled; midiEnabled = true; if (midiOutput) { for (let ch = 0; ch < 16; ch++) { midiOutput.send([0xB0 + ch, 120, 0]); midiOutput.send([0xB0 + ch, 121, 0]); } } midiEnabled = origMidiEnabled; shapes.forEach(s => { s.currentPitchBend = 8192; s.reverbAmount = 0; s.delayAmount = 0; s.panValue = 64; s.brightnessValue = 64; s.modWheelValue = 0; s.resonanceValue = 0; s.lastSentReverb = -1; s.lastSentDelay = -1; s.lastSentPan = -1; s.lastSentBrightness = -1; s.lastSentModWheel = -1; s.lastSentResonance = -1; }); updateHUD(); sendAllGlobalStatesOSC(); displayGlobalError("Sistema MIDI Resetado.", 3000); logOSC("SYSTEM", "MIDI Reset", []); }
+
+function turnOffAllActiveNotesForShape(shape) {
+  if (spectatorModeActive) return;
+  logDebug(`Desligando todas as notas ativas para a forma ${shape.id}`);
+  const currentMidiEnabledState = midiEnabled; // Salva o estado atual
+  midiEnabled = true; // Temporariamente habilita MIDI para garantir que noteOffs sejam enviados se necessário
+
+  Object.values(shape.activeMidiNotes).forEach(noteInfo => {
+    if (noteInfo.playing) {
+      // sendMidiNoteOff agora lida com a lógica de áudio interno também
+      sendMidiNoteOff(noteInfo.note, shape.midiChannel, shape.id + 1);
+    }
+    if (noteInfo.staccatoTimer) {
+      clearTimeout(noteInfo.staccatoTimer);
+    }
+  });
+  shape.activeMidiNotes = {};
+  midiEnabled = currentMidiEnabledState; // Restaura o estado original do MIDI
+}
+
+function turnOffAllActiveNotes() {
+  if (spectatorModeActive) return;
+  logDebug("Desligando todas as notas ativas para todas as formas.");
+  const currentMidiEnabledState = midiEnabled;
+  midiEnabled = true; // Temporariamente habilita MIDI
+
+  shapes.forEach(shape => turnOffAllActiveNotesForShape(shape));
+
+  // Garante que o sintetizador interno também pare todas as notas,
+  // mesmo que não estejam rastreadas em activeMidiNotes (caso de emergência)
+  const synth = getSimpleSynthInstance();
+  if (synth) synth.allNotesOff();
+
+  midiEnabled = currentMidiEnabledState;
+}
+
+function resetMidiSystem() {
+  if (spectatorModeActive) return;
+  console.log("MIDI Reset.");
+  logDebug("Sistema MIDI Resetado.");
+  turnOffAllActiveNotes(); // Isso agora também lida com o synth interno via sendMidiNoteOff e allNotesOff
+
+  const currentMidiEnabledState = midiEnabled;
+  midiEnabled = true; // Temporariamente habilita MIDI para CCs
+  if (midiOutput) {
+    for (let ch = 0; ch < 16; ch++) {
+      midiOutput.send([0xB0 + ch, 120, 0]); // All Sound Off
+      midiOutput.send([0xB0 + ch, 121, 0]); // Reset All Controllers
+    }
+  }
+  midiEnabled = currentMidiEnabledState; // Restaura
+
+  shapes.forEach(s => {
+    s.currentPitchBend = 8192; s.reverbAmount = 0; s.delayAmount = 0;
+    s.panValue = 64; s.brightnessValue = 64; s.modWheelValue = 0; s.resonanceValue = 0;
+    s.lastSentReverb = -1; s.lastSentDelay = -1; s.lastSentPan = -1;
+    s.lastSentBrightness = -1; s.lastSentModWheel = -1; s.lastSentResonance = -1;
+  });
+  updateHUD();
+  sendAllGlobalStatesOSC();
+  displayGlobalError("Sistema MIDI Resetado.", 3000);
+  logOSC("SYSTEM", "MIDI Reset", []);
+}
 
 // === OSC MANAGER ===
 function loadOscSettings() { const stored = localStorage.getItem(OSC_SETTINGS_KEY); let loadedHost = location.hostname; let loadedPort = 8080; if (stored) { try { const s = JSON.parse(stored); if (s.host) loadedHost = s.host; if (s.port) loadedPort = parseInt(s.port,10); } catch(e){ loadedHost = location.hostname || "127.0.0.1"; loadedPort = 8080; }} else { loadedHost = location.hostname || "127.0.0.1"; loadedPort = 8080; } OSC_HOST = loadedHost || "127.0.0.1"; OSC_PORT = loadedPort || 8080; if (oscHostInput) oscHostInput.value = OSC_HOST; if (oscPortInput) oscPortInput.value = OSC_PORT; console.log(`OSC Config: ${OSC_HOST}:${OSC_PORT}`); }
@@ -864,12 +962,25 @@ function setupEventListeners() {
     if (gestureSimToggleButton) gestureSimToggleButton.addEventListener('click', toggleGestureSimulation);
     if (reconnectOSCButton) reconnectOSCButton.addEventListener('click', () => { logOSC("SYSTEM","Reconectando OSC...",[]); if(reconnectOSCButton)reconnectOSCButton.disabled=true; setupOSC(); setTimeout(()=>{if(osc && osc.status() !== OSC.STATUS.IS_OPEN && reconnectOSCButton)reconnectOSCButton.disabled=false;}, OSC_RECONNECT_TIMEOUT+500); });
     if (cameraSelectElement) cameraSelectElement.addEventListener('change', (event) => { const newDeviceId = event.target.value; if (newDeviceId === currentCameraDeviceId && mediaStream) return; initializeCamera(newDeviceId || null).then(() => updateHUD()); });
-    
-    // --- Listeners para Áudio Interno (v45) ---
+
+    // --- Listeners para Áudio Interno (v46 - interagindo com synth46.js) ---
     if (internalAudioToggleButton) internalAudioToggleButton.addEventListener('click', toggleInternalAudio);
-    if (audioWaveformSelect) audioWaveformSelect.addEventListener('change', (e) => { if(simpleSynth) simpleSynth.setWaveform(e.target.value); saveAllPersistentSettings(); updateHUD(); });
-    if (audioMasterVolumeSlider) audioMasterVolumeSlider.addEventListener('input', (e) => { const volume = parseFloat(e.target.value); if(simpleSynth) simpleSynth.setMasterVolume(volume); if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = volume.toFixed(2); saveAllPersistentSettings(); /* Não precisa de updateHUD() aqui, pois não mostra volume no HUD */ });
-    
+
+    if (audioWaveformSelect) audioWaveformSelect.addEventListener('change', (e) => {
+      const synth = getSimpleSynthInstance();
+      if(synth) synth.setWaveform(e.target.value);
+      saveAllPersistentSettings();
+      updateHUD();
+    });
+
+    if (audioMasterVolumeSlider) audioMasterVolumeSlider.addEventListener('input', (e) => {
+      const volume = parseFloat(e.target.value);
+      const synth = getSimpleSynthInstance();
+      if(synth) synth.setMasterVolume(volume);
+      if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = volume.toFixed(2);
+      saveAllPersistentSettings();
+    });
+
     document.addEventListener('keydown', handleKeyPress);
     logDebug("Ouvintes de eventos configurados.");
 }
@@ -877,17 +988,25 @@ function setupEventListeners() {
 
 function toggleInternalAudio() {
   if (spectatorModeActive) return;
-  internalAudioEnabled = !internalAudioEnabled;
+  internalAudioEnabled = !internalAudioEnabled; // Alterna o estado em main46.js
+
+  // Atualiza a UI
   if (internalAudioToggleButton) {
     internalAudioToggleButton.textContent = internalAudioEnabled ? "🔊 Áudio ON" : "🔊 Áudio OFF";
     internalAudioToggleButton.classList.toggle('active', internalAudioEnabled);
   }
-  if (!internalAudioEnabled && simpleSynth) {
-    simpleSynth.allNotesOff(); // Para todas as notas soando no synth interno
+
+  // Informa o módulo synth46.js sobre a mudança
+  if (typeof setInternalAudioEnabledState === 'function') {
+    setInternalAudioEnabledState(internalAudioEnabled);
+  } else {
+    console.warn("setInternalAudioEnabledState não está definida (synth46.js não carregado ou erro).");
   }
+  // Se desativando, synth46.js já tem a lógica de allNotesOff em setInternalAudioEnabledState
+
   sendOSCMessage('/global/state/internalAudioEnabled', internalAudioEnabled ? 1 : 0);
   updateHUD();
-  saveAllPersistentSettings();
+  saveAllPersistentSettings(); // Salva o estado de internalAudioEnabled
 }
 
 function updateHUD() {
@@ -895,19 +1014,24 @@ function updateHUD() {
   if (hudElement.classList.contains('hidden')) { let textSpan = hudElement.querySelector('span#hudTextContent'); if (textSpan) { textSpan.innerHTML = ""; } return; }
   let txt = "";
   if (spectatorModeActive) txt += `<b>👓 MODO ESPECTADOR</b><br>`;
-  
-  const audioIcon = internalAudioEnabled && audioCtx && audioCtx.state === 'running' ? '🟢' : '🔴';
-  const audioStatusText = internalAudioEnabled && audioCtx && audioCtx.state === 'running' ? (simpleSynth?.waveform || 'ON') : 'OFF';
-  const audioStatusClass = internalAudioEnabled && audioCtx && audioCtx.state === 'running' ? 'status-ok' : 'status-error';
+
+  // Obtém o estado do áudio do synth46.js
+  const currentAudioCtx = typeof getAudioContext === 'function' ? getAudioContext() : null;
+  const currentSimpleSynth = typeof getSimpleSynthInstance === 'function' ? getSimpleSynthInstance() : null;
+
+  const audioRunning = internalAudioEnabled && currentAudioCtx && currentAudioCtx.state === 'running';
+  const audioIcon = audioRunning ? '🟢' : '🔴';
+  const audioStatusText = audioRunning ? (currentSimpleSynth?.waveform || 'ON') : 'OFF';
+  const audioStatusClass = audioRunning ? 'status-ok' : 'status-error';
   txt += `Áudio: ${audioIcon} <span class="${audioStatusClass}">${audioStatusText}</span> | `;
-  
+
   const midiStatusIcon = midiAccess && midiOutput ? '🟢' : '🔴';
   txt += `MIDI: ${midiStatusIcon} <span class="${midiAccess && midiOutput ? 'status-ok':'status-error'}">${midiEnabled && midiOutput ? (midiOutput.name || 'ON') : 'OFF'}</span> | `;
-  
+
   const oscConnected = osc && osc.status() === OSC.STATUS.IS_OPEN;
   const oscStatusIcon = oscConnected ? '🟢' : (oscStatus.includes("Erro") || oscStatus.includes("Falha") ? '🟠' : '🔴');
   txt += `OSC: ${oscStatusIcon} <span class="${oscConnected ? 'status-ok': (oscStatus.includes("Erro") || oscStatus.includes("Falha") ? 'status-warn' : 'status-error')}">${oscStatus}</span><br>`;
-  
+
   shapes.forEach(s => { txt += `<b>F${s.id+1}:</b> R:${s.radius.toFixed(0)} L:${s.sides===100?"○":s.sides} Gest:${spectatorModeActive?"-":(s.activeGesture||"Nenhum")}<br>`; });
   txt += `<b>Global:</b> Pulso:${pulseModeActive?'ON':'OFF'} Artic:${staccatoModeActive?'Stac':'Leg'} VtxPull:${vertexPullModeActive?'ON':'OFF'}<br>`;
   txt += `&nbsp;&nbsp;Escala:${SCALES[currentScaleName].name} Nota:${currentNoteMode} Acorde:${chordMode} Oper:${operationMode==='one_person'?'1P':'2P'}<br>`;
@@ -940,13 +1064,13 @@ function handleKeyPress(e) {
     const anyModalOpen = Array.from(document.querySelectorAll('.modal-overlay')).some(m => m.style.display === 'flex');
     if (e.key === 'Escape') { if (isInputFocused) activeEl.blur(); else if (anyModalOpen) [infoModal, settingsModal, arpeggioSettingsModal, oscControlModal, shapePresetModal, oscConfigModal].forEach(m => {if(m)m.style.display='none'}); return; }
     if (isInputFocused || (spectatorModeActive && e.key !== 'Escape')) return;
-  
+
   // Mapa de ações sem Shift
   const actionMap = {
     'm': toggleMidiEnabled,
     // Adicione outras ações sem shift aqui
   };
-  
+
   // Mapa de ações com Shift
   const correctedShiftActionMap = {
     'I': () => { if (infoModal) infoModal.style.display = infoModal.style.display === 'flex' ? 'none' : 'flex'; },
@@ -981,9 +1105,14 @@ function loadPersistentSetting(key,defaultValue){try{const s=JSON.parse(localSto
 function saveAllPersistentSettings(){
   savePersistentSetting('operationMode',operationMode);
   savePersistentSetting('midiEnabled',midiEnabled);
-  savePersistentSetting('internalAudioEnabled', internalAudioEnabled); // v45
-  if(simpleSynth) savePersistentSetting('audioWaveform', simpleSynth.waveform); // v45
-  if(simpleSynth) savePersistentSetting('audioMasterVolume', simpleSynth.masterGainNode.gain.value); // v45
+  savePersistentSetting('internalAudioEnabled', internalAudioEnabled); // Mantém o controle do estado de habilitação
+
+  const synth = getSimpleSynthInstance();
+  if(synth) {
+    savePersistentSetting('audioWaveform', synth.waveform);
+    savePersistentSetting('audioMasterVolume', synth.masterGainNode.gain.value);
+  }
+
   savePersistentSetting('dmxSyncModeActive',dmxSyncModeActive);
   savePersistentSetting('midiFeedbackEnabled',midiFeedbackEnabled);
   savePersistentSetting('spectatorModeActive',spectatorModeActive); // Embora o modo espectador não deva persistir ligado, salvar para consistência
@@ -992,54 +1121,59 @@ function saveAllPersistentSettings(){
   savePersistentSetting('midiOutputId', midiOutput ? midiOutput.id : null);
   savePersistentSetting('midiInputId', midiInput ? midiInput.id : null);
   // Não salvar cameraError, gestureSimulationActive, isRecordingOSC, isPlayingOSCLoop - são estados de tempo de execução
-  console.log("Configs V45 salvas no localStorage.");
-} 
+  console.log("Configs V46 salvas no localStorage."); // Atualizado para V46
+}
 
 function loadAllPersistentSettings(){
   operationMode = loadPersistentSetting('operationMode','two_persons');
   midiEnabled = loadPersistentSetting('midiEnabled',true);
-  internalAudioEnabled = loadPersistentSetting('internalAudioEnabled', true); // v45
-  const savedWaveform = loadPersistentSetting('audioWaveform', 'sine'); // v45
-  const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5); // v45
+  internalAudioEnabled = loadPersistentSetting('internalAudioEnabled', true);
+  // As configurações de waveform e volume serão aplicadas ao synth quando ele for inicializado/obtido
+  // const savedWaveform = loadPersistentSetting('audioWaveform', 'sine'); // Removido daqui
+  // const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5); // Removido daqui
 
   dmxSyncModeActive = loadPersistentSetting('dmxSyncModeActive',false);
   midiFeedbackEnabled = loadPersistentSetting('midiFeedbackEnabled',false);
   // spectatorModeActive = loadPersistentSetting('spectatorModeActive',false); // Não carregar, sempre iniciar como false
-  spectatorModeActive = false; 
+  spectatorModeActive = false;
   currentTheme = loadPersistentSetting('currentTheme','theme-dark'); // Carrega o tema antes de aplicar
   oscLoopDuration = loadPersistentSetting('oscLoopDuration',5000);
-  
+
   // Aplica as configurações carregadas que afetam a UI ou o estado do synth
-  if (internalAudioToggleButton) { // Garante que o elemento exista
+  if (internalAudioToggleButton) {
       internalAudioToggleButton.textContent = internalAudioEnabled ? "🔊 Áudio ON" : "🔊 Áudio OFF";
       internalAudioToggleButton.classList.toggle('active', internalAudioEnabled);
   }
-  if (audioWaveformSelect) audioWaveformSelect.value = savedWaveform;
-  if (simpleSynth) simpleSynth.setWaveform(savedWaveform); // Aplica ao synth se já instanciado
-  
-  if (audioMasterVolumeSlider) audioMasterVolumeSlider.value = savedMasterVolume;
-  if (audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = savedMasterVolume.toFixed(2);
-  if (simpleSynth) simpleSynth.setMasterVolume(savedMasterVolume); // Aplica ao synth
+  // Informa synth46.js sobre o estado inicial de internalAudioEnabled
+  if (typeof setInternalAudioEnabledState === 'function') {
+    setInternalAudioEnabledState(internalAudioEnabled);
+  }
+
+  // As configurações de waveform e volume serão aplicadas em DOMContentLoaded
+  // após a possível inicialização do synth por gesto.
+  // if (audioWaveformSelect) audioWaveformSelect.value = loadPersistentSetting('audioWaveform', 'sine');
+  // if (audioMasterVolumeSlider) audioMasterVolumeSlider.value = loadPersistentSetting('audioMasterVolume', 0.5);
+  // if (audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = loadPersistentSetting('audioMasterVolume', 0.5).toFixed(2);
 
   loadOscSettings(); // Carrega OSC_HOST e OSC_PORT
   loadArpeggioSettings(); // Carrega configurações de arpejo
-  
-  console.log("Configs V45 carregadas do localStorage.");
+
+  console.log("Configs V46 carregadas do localStorage."); // Atualizado para V46
   return {
     savedMidiOutputId: loadPersistentSetting('midiOutputId',null),
     savedMidiInputId: loadPersistentSetting('midiInputId',null),
     // Retorna waveform e volume para serem aplicados ao SimpleSynth após sua instanciação, se necessário
     // No entanto, a lógica acima já tenta aplicar se simpleSynth existir.
   };
-} 
+}
 
 function saveArpeggioSettings(){const s={currentArpeggioStyle,arpeggioBPM,noteInterval,externalBPM};try{localStorage.setItem(ARPEGGIO_SETTINGS_KEY,JSON.stringify(s));}catch(e){}/*savePersistentSetting('arpeggioSettingsLastUpdate',Date.now()); Não é mais necessário aqui, pois está dentro de saveAllPersistentSettings */}
 function loadArpeggioSettings(){try{const s=JSON.parse(localStorage.getItem(ARPEGGIO_SETTINGS_KEY));if(s){currentArpeggioStyle=s.currentArpeggioStyle||"UP";arpeggioBPM=s.arpeggioBPM||120;noteInterval=s.noteInterval||(60000/arpeggioBPM);}}catch(e){}if(arpeggioStyleSelect)arpeggioStyleSelect.value=currentArpeggioStyle;if(arpeggioBPMSlider)arpeggioBPMSlider.value=arpeggioBPM;if(arpeggioBPMValueSpan)arpeggioBPMValueSpan.textContent=arpeggioBPM;if(noteIntervalSlider)noteIntervalSlider.value=noteInterval;if(noteIntervalValueSpan)noteIntervalValueSpan.textContent=noteInterval;}
 function populateArpeggioStyleSelect(){if(!arpeggioStyleSelect)return;arpeggioStyleSelect.innerHTML='';ARPEGGIO_STYLES.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();arpeggioStyleSelect.appendChild(o);});arpeggioStyleSelect.value=currentArpeggioStyle;}
 
 window.addEventListener('DOMContentLoaded', () => {
-    logDebug("DOM Carregado. Iniciando main45.js...");
-    console.log("DOM Carregado. Iniciando main45.js...");
+    logDebug("DOM Carregado. Iniciando main46.js..."); // Atualizado para main46.js
+    console.log("DOM Carregado. Iniciando main46.js..."); // Atualizado para main46.js
     detectPlatform();
     hasWebGL2 = checkWebGL2Support();
     if (!hasWebGL2) displayGlobalError("Aviso: WebGL2 não disponível.", 15000);
@@ -1052,29 +1186,48 @@ window.addEventListener('DOMContentLoaded', () => {
     // Carregar configurações persistentes PRIMEIRO
     // loadAllPersistentSettings() agora também lida com OSC e Arpeggio settings internamente
     // e aplica configurações de áudio se simpleSynth já estiver disponível.
-    const { savedMidiOutputId, savedMidiInputId } = loadAllPersistentSettings(); 
-    
+    const { savedMidiOutputId, savedMidiInputId } = loadAllPersistentSettings();
+
     loadTheme(); // Aplicar tema carregado por loadAllPersistentSettings
     applyTheme(currentTheme); // Certifica que o tema é aplicado visualmente
 
     initPresetManager();
-    setupEventListeners(); // Configura todos os event listeners, incluindo os novos para áudio
-    
-    // Instanciar SimpleSynth aqui se o AudioContext já foi inicializado por um gesto anterior
-    // (embora a política de autoplay geralmente exija que initAudioContext seja chamado por gesto)
-    // A inicialização principal do SimpleSynth ocorre em initAudioContext -> initAudioContextOnGesture
-    if (audioCtx && !simpleSynth) { // Se audioCtx existe mas synth não (caso raro)
-        simpleSynth = new SimpleSynth(audioCtx);
-        // Reaplica configs de áudio caso o synth tenha sido criado depois de loadAllPersistentSettings
-        const savedWaveform = loadPersistentSetting('audioWaveform', 'sine');
-        const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5);
-        simpleSynth.setWaveform(savedWaveform);
-        simpleSynth.setMasterVolume(savedMasterVolume);
-        if(audioWaveformSelect) audioWaveformSelect.value = savedWaveform;
-        if(audioMasterVolumeSlider) audioMasterVolumeSlider.value = savedMasterVolume;
-        if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = savedMasterVolume.toFixed(2);
-    }
+    setupEventListeners(); // Configura todos os event listeners
 
+    // Adiciona um listener de 'click' ou 'keydown' para inicializar o AudioContext via synth46.js
+    // Isso é crucial devido às políticas de autoplay dos navegadores.
+    const initAudioHandler = () => {
+        if (typeof initAudioContextOnGesture === 'function') {
+            initAudioContextOnGesture();
+            // Após a tentativa de inicialização, podemos tentar aplicar as configs salvas
+            const synth = getSimpleSynthInstance();
+            if (synth) {
+                const savedWaveform = loadPersistentSetting('audioWaveform', 'sine');
+                const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5);
+                synth.setWaveform(savedWaveform);
+                synth.setMasterVolume(savedMasterVolume);
+                if(audioWaveformSelect) audioWaveformSelect.value = savedWaveform;
+                if(audioMasterVolumeSlider) audioMasterVolumeSlider.value = savedMasterVolume;
+                if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = savedMasterVolume.toFixed(2);
+            }
+        } else {
+            console.warn("initAudioContextOnGesture não está definida. synth46.js não carregado?");
+        }
+        // Remove os listeners após a primeira interação para não chamar múltiplas vezes
+        document.removeEventListener('click', initAudioHandler);
+        document.removeEventListener('keydown', initAudioHandler);
+    };
+    document.addEventListener('click', initAudioHandler);
+    document.addEventListener('keydown', initAudioHandler);
+
+    // Aplica as configurações de áudio que dependem de elementos do DOM e do synth inicializado
+    // Isso será chamado novamente pelo initAudioHandler para garantir que o synth esteja pronto.
+    const savedWaveform = loadPersistentSetting('audioWaveform', 'sine');
+    const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5);
+    if(audioWaveformSelect) audioWaveformSelect.value = savedWaveform;
+    if(audioMasterVolumeSlider) audioMasterVolumeSlider.value = savedMasterVolume;
+    if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = savedMasterVolume.toFixed(2);
+    // A aplicação ao synth em si é feita dentro do initAudioHandler ou se o synth já existir.
 
     setupOSC(); // Configura OSC após carregar settings de OSC em loadAllPersistentSettings
 
@@ -1084,16 +1237,16 @@ window.addEventListener('DOMContentLoaded', () => {
     initMidi().then(async () => {
         if (savedMidiOutputId && availableMidiOutputs.has(savedMidiOutputId)) { if(midiOutputSelect) midiOutputSelect.value = savedMidiOutputId; midiOutput = availableMidiOutputs.get(savedMidiOutputId); }
         else if (availableMidiOutputs.size > 0 && midiOutputSelect) { midiOutputSelect.selectedIndex = 0; midiOutput = availableMidiOutputs.get(midiOutputSelect.value); }
-        
+
         if (savedMidiInputId && availableMidiInputs.has(savedMidiInputId)) { if(midiInputSelect) midiInputSelect.value = savedMidiInputId; setMidiInput(availableMidiInputs.get(savedMidiInputId)); }
         else if (availableMidiInputs.size > 0 && midiInputSelect) { midiInputSelect.selectedIndex = 0; setMidiInput(availableMidiInputs.get(midiInputSelect.value)); }
-        
+
         // Salvar IDs MIDI novamente após seleção/fallback para garantir que estejam corretos
         savePersistentSetting('midiOutputId', midiOutput ? midiOutput.id : null);
         savePersistentSetting('midiInputId', midiInput ? midiInput.id : null);
-        
+
         await populateCameraSelect();
-        initializeCamera(currentCameraDeviceId); 
+        initializeCamera(currentCameraDeviceId);
     }).catch(err => {
         console.error("Erro MIDI/Câmera init:", err);
         populateCameraSelect().then(() => initializeCamera(currentCameraDeviceId));
@@ -1101,15 +1254,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
     populateArpeggioStyleSelect(); // Popula e define valor com base no carregado em loadArpeggioSettings
     if(oscLoopDurationInput) oscLoopDurationInput.value = oscLoopDuration; // Definido por loadAllPersistentSettings
-    if(hudElement) hudElement.classList.remove('hidden'); 
+    if(hudElement) hudElement.classList.remove('hidden');
 
     updateHUD(); // Atualiza o HUD com todos os estados carregados/padrão
     sendAllGlobalStatesOSC(); // Envia estados iniciais via OSC
 
-    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v45).\n`;
-    
-    console.log("Iniciando loop de animação (v45) e finalizando DOMContentLoaded.");
-    animationLoop(); 
+    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v46).\n`; // Atualizado para v46
+
+    console.log("Iniciando loop de animação (v46) e finalizando DOMContentLoaded."); // Atualizado para v46
+    animationLoop();
 });
 
 function animationLoop() {
