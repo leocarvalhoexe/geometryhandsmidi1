@@ -2,7 +2,8 @@
 // MIDI SHAPE MANIPULATOR v47 - main47.js
 // ==========================================================================
 
-let audioCtx, simpleSynth; // Declaradas aqui, serão atribuídas via synth47.js
+// simpleSynth e audioCtx são gerenciados e obtidos de synth47.js
+// Não há mais declarações globais de 'let simpleSynth;' ou 'let audioCtx;' aqui.
 
 // === DEBUGGING ===
 const DEBUG_MODE = true; // Defina como false para desabilitar logs de debug
@@ -801,8 +802,10 @@ function sendMidiNoteOn(note, velocity, channel, shapeId = -1) {
     midiOutput.send([0x90 + ch, n, v]);
   }
   // Internal Synth Call
-  if (internalAudioEnabled && simpleSynth && typeof simpleSynth.noteOn === 'function') {
-    simpleSynth.noteOn(n, v);
+  // Obtemos a instância do synth aqui para garantir que estamos usando a mais recente.
+  const currentSimpleSynth = getSimpleSynthInstance();
+  if (internalAudioEnabled && currentSimpleSynth && typeof currentSimpleSynth.noteOn === 'function') {
+    currentSimpleSynth.noteOn(n, v);
   }
   sendOSCMessage(`/forma/${shapeId}/noteOn`, n, v, ch);
   if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, v);
@@ -817,8 +820,9 @@ function sendMidiNoteOff(note, channel, shapeId = -1) {
     midiOutput.send([0x80 + ch, n, 0]);
   }
   // Internal Synth Call
-  if (internalAudioEnabled && simpleSynth && typeof simpleSynth.noteOff === 'function') {
-    simpleSynth.noteOff(n);
+  const currentSimpleSynth = getSimpleSynthInstance();
+  if (internalAudioEnabled && currentSimpleSynth && typeof currentSimpleSynth.noteOff === 'function') {
+    currentSimpleSynth.noteOff(n);
   }
   sendOSCMessage(`/forma/${shapeId}/noteOff`, n, ch);
   if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, 0);
@@ -867,8 +871,9 @@ function turnOffAllActiveNotes() {
   midiEnabled = origMidiEnabled; // Restaura o estado
 
   // Adicionalmente, uma chamada explícita para allNotesOff no synth interno para garantir.
-  if (simpleSynth && typeof simpleSynth.allNotesOff === 'function') {
-    simpleSynth.allNotesOff();
+  const currentSimpleSynth = getSimpleSynthInstance();
+  if (currentSimpleSynth && typeof currentSimpleSynth.allNotesOff === 'function') {
+    currentSimpleSynth.allNotesOff();
   }
 }
 
@@ -975,8 +980,8 @@ function setupEventListeners() {
     
     // --- Listeners para Áudio Interno (v45) ---
     if (internalAudioToggleButton) internalAudioToggleButton.addEventListener('click', toggleInternalAudio);
-    if (audioWaveformSelect) audioWaveformSelect.addEventListener('change', (e) => { if(simpleSynth) simpleSynth.setWaveform(e.target.value); saveAllPersistentSettings(); updateHUD(); });
-    if (audioMasterVolumeSlider) audioMasterVolumeSlider.addEventListener('input', (e) => { const volume = parseFloat(e.target.value); if(simpleSynth) simpleSynth.setMasterVolume(volume); if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = volume.toFixed(2); saveAllPersistentSettings(); /* Não precisa de updateHUD() aqui, pois não mostra volume no HUD */ });
+    if (audioWaveformSelect) audioWaveformSelect.addEventListener('change', (e) => { const synth = getSimpleSynthInstance(); if(synth) synth.setWaveform(e.target.value); saveAllPersistentSettings(); updateHUD(); });
+    if (audioMasterVolumeSlider) audioMasterVolumeSlider.addEventListener('input', (e) => { const volume = parseFloat(e.target.value); const synth = getSimpleSynthInstance(); if(synth) synth.setMasterVolume(volume); if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = volume.toFixed(2); saveAllPersistentSettings(); /* Não precisa de updateHUD() aqui, pois não mostra volume no HUD */ });
     
     document.addEventListener('keydown', handleKeyPress);
     logDebug("Ouvintes de eventos configurados.");
@@ -990,8 +995,9 @@ function toggleInternalAudio() {
     internalAudioToggleButton.textContent = internalAudioEnabled ? "🔊 Áudio ON" : "🔊 Áudio OFF";
     internalAudioToggleButton.classList.toggle('active', internalAudioEnabled);
   }
-  if (!internalAudioEnabled && simpleSynth) {
-    simpleSynth.allNotesOff(); // Para todas as notas soando no synth interno
+  const currentSimpleSynth = getSimpleSynthInstance();
+  if (!internalAudioEnabled && currentSimpleSynth) {
+    currentSimpleSynth.allNotesOff(); // Para todas as notas soando no synth interno
   }
   sendOSCMessage('/global/state/internalAudioEnabled', internalAudioEnabled ? 1 : 0);
   updateHUD();
@@ -1004,9 +1010,13 @@ function updateHUD() {
   let txt = "";
   if (spectatorModeActive) txt += `<b>👓 MODO ESPECTADOR</b><br>`;
   
-  const audioIcon = internalAudioEnabled && audioCtx && audioCtx.state === 'running' ? '🟢' : '🔴';
-  const audioStatusText = internalAudioEnabled && audioCtx && audioCtx.state === 'running' ? (simpleSynth?.waveform || 'ON') : 'OFF';
-  const audioStatusClass = internalAudioEnabled && audioCtx && audioCtx.state === 'running' ? 'status-ok' : 'status-error';
+  // Para o status do áudio no HUD, precisamos saber se o AudioContext está 'running'.
+  // Vamos obter o AudioContext de synth47.js para essa verificação.
+  const currentAudioCtx = getAudioContext(); // Obtém o contexto atual de synth47.js
+  const audioIcon = internalAudioEnabled && currentAudioCtx && currentAudioCtx.state === 'running' ? '🟢' : '🔴';
+  const currentSimpleSynth = getSimpleSynthInstance(); // Obter a instância para verificar a waveform
+  const audioStatusText = internalAudioEnabled && currentAudioCtx && currentAudioCtx.state === 'running' ? (currentSimpleSynth?.waveform || 'ON') : 'OFF';
+  const audioStatusClass = internalAudioEnabled && currentAudioCtx && currentAudioCtx.state === 'running' ? 'status-ok' : 'status-error';
   txt += `Áudio: ${audioIcon} <span class="${audioStatusClass}">${audioStatusText}</span> | `;
   
   const midiStatusIcon = midiAccess && midiOutput ? '🟢' : '🔴';
@@ -1090,8 +1100,11 @@ function saveAllPersistentSettings(){
   savePersistentSetting('operationMode',operationMode);
   savePersistentSetting('midiEnabled',midiEnabled);
   savePersistentSetting('internalAudioEnabled', internalAudioEnabled); // v45
-  if(simpleSynth) savePersistentSetting('audioWaveform', simpleSynth.waveform); // v45
-  if(simpleSynth) savePersistentSetting('audioMasterVolume', simpleSynth.masterGainNode.gain.value); // v45
+  const currentSimpleSynth = getSimpleSynthInstance();
+  if(currentSimpleSynth) {
+    savePersistentSetting('audioWaveform', currentSimpleSynth.waveform); // v45
+    savePersistentSetting('audioMasterVolume', currentSimpleSynth.masterGainNode.gain.value); // v45
+  }
   savePersistentSetting('dmxSyncModeActive',dmxSyncModeActive);
   savePersistentSetting('midiFeedbackEnabled',midiFeedbackEnabled);
   savePersistentSetting('spectatorModeActive',spectatorModeActive); // Embora o modo espectador não deva persistir ligado, salvar para consistência
@@ -1123,11 +1136,14 @@ function loadAllPersistentSettings(){
       internalAudioToggleButton.classList.toggle('active', internalAudioEnabled);
   }
   if (audioWaveformSelect) audioWaveformSelect.value = savedWaveform;
-  if (simpleSynth) simpleSynth.setWaveform(savedWaveform); // Aplica ao synth se já instanciado
+  const currentSimpleSynth = getSimpleSynthInstance();
+  if (currentSimpleSynth) {
+    currentSimpleSynth.setWaveform(savedWaveform); // Aplica ao synth se já instanciado
+    currentSimpleSynth.setMasterVolume(savedMasterVolume); // Aplica ao synth
+  }
   
   if (audioMasterVolumeSlider) audioMasterVolumeSlider.value = savedMasterVolume;
   if (audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = savedMasterVolume.toFixed(2);
-  if (simpleSynth) simpleSynth.setMasterVolume(savedMasterVolume); // Aplica ao synth
 
   loadOscSettings(); // Carrega OSC_HOST e OSC_PORT
   loadArpeggioSettings(); // Carrega configurações de arpejo
@@ -1169,19 +1185,28 @@ window.addEventListener('DOMContentLoaded', () => {
     setupEventListeners(); // Configura todos os event listeners, incluindo os novos para áudio
     
     // Tenta obter instâncias de áudio. A criação real depende de gesto.
-    // As variáveis globais audioCtx e simpleSynth em main47.js serão atualizadas
+    // A variável global simpleSynth em main47.js será atualizada
     // após a chamada bem-sucedida de initAudioOnFirstGesture.
-    audioCtx = getAudioContext(); // Tenta obter o contexto de synth47.js
-    simpleSynth = getSimpleSynthInstance(); // Tenta obter a instância de synth47.js
+    // audioCtx é obtido e gerenciado internamente por synth47.js.
+    // As funções de synth47.js acessam o audioCtx que ele próprio gerencia.
 
-    if (simpleSynth) {
+    // Removemos a atribuição direta de audioCtx aqui.
+    // Em vez disso, confiamos que getAudioContext() dentro de synth47.js fará o necessário.
+    // E que initAudioContextOnGesture() também o fará.
+
+    // Tentamos obter a instância do synth.
+    // Não armazenamos mais em uma variável global 'simpleSynth' no topo deste arquivo.
+    // Em vez disso, chamamos getSimpleSynthInstance() onde for necessário.
+    const initialSimpleSynth = getSimpleSynthInstance();
+
+    if (initialSimpleSynth) {
         // Se o simpleSynth já foi instanciado (por exemplo, por um gesto anterior e recarregamento da página
         // onde o AudioContext persistiu ou foi rapidamente re-instanciado por synth47.js),
         // então reaplicamos as configurações salvas.
         const savedWaveform = loadPersistentSetting('audioWaveform', 'sine');
         const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5);
-        simpleSynth.setWaveform(savedWaveform);
-        simpleSynth.setMasterVolume(savedMasterVolume);
+        initialSimpleSynth.setWaveform(savedWaveform);
+        initialSimpleSynth.setMasterVolume(savedMasterVolume);
         if(audioWaveformSelect) audioWaveformSelect.value = savedWaveform;
         if(audioMasterVolumeSlider) audioMasterVolumeSlider.value = savedMasterVolume;
         if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = savedMasterVolume.toFixed(2);
@@ -1197,15 +1222,16 @@ window.addEventListener('DOMContentLoaded', () => {
         if (typeof initAudioContextOnGesture === "function") {
             const audioReady = initAudioContextOnGesture(); // Chama a função de synth47.js
             if (audioReady) {
-                audioCtx = getAudioContext(); // Atualiza a referência local
-                simpleSynth = getSimpleSynthInstance(); // Atualiza a referência local
+                // audioCtx é gerenciado por synth47.js.
+                // Obtemos a instância do synth novamente aqui.
+                const synthAfterGesture = getSimpleSynthInstance();
 
-                if (simpleSynth) {
+                if (synthAfterGesture) {
                     // Aplica configurações salvas caso o synth tenha sido criado neste momento
                     const vol = parseFloat(loadPersistentSetting('audioMasterVolume', 0.5));
                     const wave = loadPersistentSetting('audioWaveform', 'sine');
-                    simpleSynth.setMasterVolume(vol);
-                    simpleSynth.setWaveform(wave);
+                    synthAfterGesture.setMasterVolume(vol);
+                    synthAfterGesture.setWaveform(wave);
                     if(audioMasterVolumeSlider) audioMasterVolumeSlider.value = vol;
                     if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = vol.toFixed(2);
                     if(audioWaveformSelect) audioWaveformSelect.value = wave;
