@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIDI Shape Manipulator v44</title> <!-- Version Update -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js?v=44"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js?v=44"></script>
+  <style>
+    html, body { height: 100%; margin: 0; /* overflow: hidden; */ /* Allow body scroll if sidebar content is too tall and sidebar is fixed */ }
+    body { background: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; color: #eee; position: relative; }
+
+    .control-button {
+      margin: 4px;
+      padding: 8px 12px;
+      background-color: #383838;
+      color: #ddd;
+      border: 1px solid #555;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 13px;
+      white-space: nowrap;
+      transition: background-color 0.2s, color 0.2s;
+      flex-shrink: 0;
+      display: block;
+      width: calc(100% - 8px);
+      text-align: left;
+    }
+    .control-button:hover { background-color: #4a4a4a; color: white; }
+    .control-button:active { background-color: #555; }
+    .control-button:disabled { background-color: #2a2a2a; color: #777; border-color: #444; cursor: not-allowed;}
+    .control-button.active { background-color: #007bff; color: white; border-color: #0056b3;}
+
+    #mainCanvasContainer { flex-grow: 1; position: relative; background-color: #000; overflow: hidden; /* Prevent canvas from causing scrollbars */ }
+    canvas#canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+
+    /* Sidebar Styles - v41 */
+    #sidebar {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      width: 250px;
+      background-color: #1c1c1c;
+      border-right: 1px solid #333;
+      z-index: 1001; /* Increased z-index to be above HUD if it ever overlaps during transitions, though HUD is also fixed */
+      transform: translateX(-100%); /* Initially hidden */
+      transition: transform 0.3s ease-in-out;
+      overflow-y: auto; /* Scroll if content exceeds height */
+      padding-top: 10px; /* Space for content */
+      box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+    }
+
+    #sidebar.open {
+      transform: translateX(0); /* Fully visible */
+    }
+
+    #sidebarHandle {
+      position: fixed; /* Fixed to the viewport */
+      top: 10px; /* Position from the top */
+      left: 10px; /* Position from the left */
+      width: 40px; /* Width of the handle */
+      height: 40px; /* Height of the handle */
+      background-color: #007bff;
+      border-radius: 5px; /* Slightly rounded corners */
+      border: 1px solid #0056b3;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px; /* Icon size */
+      color: #ffffff;
+      z-index: 1002; /* Above sidebar and potentially other elements */
+      transition: background-color 0.2s, left 0.3s ease-in-out; /* Smooth transition for left if sidebar pushes it */
+      box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    }
+    #sidebarHandle:hover {
+      background-color: #0056b3;
+    }
+
+    #sidebarContent {
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    @media (max-width: 768px) { /* Example breakpoint for smaller screens */
+      #sidebar {
+        width: 220px; /* Slightly narrower on smaller screens */
+      }
+    }
+
+    .modal-overlay {
+      display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.78); z-index: 1010; /* Higher z-index for modals */
+      justify-content: center; align-items: center;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    .modal-content {
+      background-color: #282c34; color: #abb2bf;
+      padding: 20px;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 750px;
+      position: relative;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+      border: 1px solid #3e4451;
+      -webkit-overflow-scrolling: touch;
+    }
+    .modal-content h3 { margin-top: 0; border-bottom: 1px solid #3e4451; padding-bottom: 10px; color: #61afef; font-size: 1.3em; }
+    .modal-content p, .modal-content ul, .modal-content label { line-height: 1.6; color: #abb2bf; font-size: 0.9em; }
+    .modal-content ul { padding-left: 18px; }
+    .modal-content li { margin-bottom: 5px;}
+    .modal-content strong { color: #e5c07b; }
+    .modal-content code { background-color: #3a3f4b; padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; color: #d19a66;}
+    .modal-content a { color: #61afef; text-decoration: none; }
+    .modal-content a:hover { text-decoration: underline; }
+    .close-modal-button { position: absolute; top: 12px; right: 18px; font-size: 28px; cursor: pointer; color: #777; background: none; border: none; line-height: 1; padding: 5px;}
+    .close-modal-button:hover { color: #ccc; }
+    .modal-footer { margin-top: 25px; padding-top: 18px; border-top: 1px solid #3e4451; text-align: center; font-size: 0.8em; color: #777;}
+
+    .modal-content label { display: block; margin-top: 15px; margin-bottom: 5px; font-weight: 600; color: #98c379;}
+    .modal-content select, .modal-content input[type="range"], .modal-content input[type="number"], .modal-content input[type="text"], .modal-content textarea {
+      width: 100%;
+      padding: 10px; margin-top: 5px; border-radius: 4px;
+      border: 1px solid #3e4451; background-color: #21252b; color: #abb2bf; font-size: 0.9em;
+      box-sizing: border-box;
+    }
+    .modal-content input[type="range"] { padding-left:0; padding-right:0; height: auto;}
+    .modal-content textarea { min-height: 80px; resize: vertical; line-height: 1.4; }
+    .modal-content .value-display { margin-left: 8px; font-size: 0.85em; color: #61afef; }
+    .modal-content .button-group {
+      margin-top: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .modal-content .button-group.extra-margin-top { /* Nova classe para o margin-top específico */
+      margin-top: 20px;
+    }
+    .modal-content .button-group button {
+      flex-grow: 1;
+      padding: 12px 15px;
+      font-size: 0.9em;
+    }
+     @media (min-width: 480px) {
+        .modal-content .button-group {
+            flex-direction: row;
+        }
+    }
+    .modal-content hr { border: 0; height: 1px; background-color: #3e4451; margin: 20px 0; }
+
+    /* Estilos específicos para botões movidos do inline */
+    #saveOscConfigButton.control-button { /* Aplicado a .control-button já existente com ID */
+      background-color: #28a745;
+      color: white;
+    }
+    #sendTestOSCButton.control-button {
+      margin-top: 12px;
+      background-color: #007bff;
+      /* color: white; é herdado de .control-button.active ou .theme-dark .control-button.active se for o caso, ou precisa ser explicitamente definido se não for active */
+    }
+     /* Para botões de log OSC, se não houver outra forma de agrupá-los, usar IDs ou classes específicas */
+    #clearOscLogButton.control-button,
+    #exportOscLogButton.control-button {
+      margin-top: 8px;
+    }
+    #deleteSelectedPresetButton.control-button {
+        background-color: #e06c75;
+        /* color: white;  Pode ser necessário se não for herdado */
+    }
+
+    /* Estilos para elementos que estavam inline */
+    video#video, input#importPresetFileInput {
+      display: none;
+    }
+    label[for="savedPresetsSelect"] {
+      margin-top: 20px;
+    }
+    select#savedPresetsSelect {
+      min-height: 80px;
+    }
+    button#reconnectOSCButton.control-button { /* Estilo mais específico para o botão de reconectar OSC */
+      display: none; /* Será controlado por JS para mostrar */
+      margin-left: 10px;
+      padding: 3px 6px;
+      font-size: 11px;
+    }
+
+    /* HUD Styles - v42 Update */
+    #hud {
+      position: fixed;
+      bottom: 10px; /* Standard margin from bottom */
+      right: 10px;  /* Positioned to the right */
+      background-color: rgba(20, 22, 28, 0.85);
+      color: #c8ccd4;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      z-index: 1000; /* Below sidebar (1001) and modals (1010) but above canvas */
+      max-width: calc(100% - 20px); /* Max width considering padding from both sides */
+      line-height: 1.55;
+      border: 1px solid #333842;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      /* transition: left 0.3s ease-in-out; REMOVED - No longer slides with sidebar */
+      /* Removed dynamic left and max-width calculation based on sidebar variables */
+    }
+    #hud.hidden { /* New class to hide HUD */
+        display: none;
+    }
+    #hud b { color: #61afef; }
+    #hud span.highlight { color: #e5c07b; }
+    #hud span.status-ok { color: #98c379; }
+    #hud span.status-error { color: #e06c75; }
+    #hud span.status-warn { color: #d19a66; }
+
+
+    /* Specific styles for active buttons based on their function */
+    #recordOSCButton.active { background-color: #e06c75; border-color: #c05c65;} /* Red for recording */
+    #playOSCLoopButton.active { background-color: #e5c07b; border-color: #c5a05b; color: #282c34;} /* Yellow/Orange for playing */
+    #syncDMXNotesButton.active, #midiFeedbackToggleButton.active, #spectatorModeButton.active { background-color: #56b6c2; border-color: #3696a2; color: white;} /* Teal/Cyan for active modes */
+
+    /* --- Theme Styles --- */
+    /* Dark Theme (Default) */
+    body.theme-dark { background-color: #111; color: #eee; }
+    .theme-dark #sidebar { background-color: #1c1c1c; border-right: 1px solid #333;}
+    .theme-dark .control-button { background-color: #383838; color: #ddd; border: 1px solid #555; }
+    .theme-dark .control-button:hover { background-color: #4a4a4a; color: white; }
+    .theme-dark .control-button:active { background-color: #555; }
+    .theme-dark .control-button:disabled { background-color: #2a2a2a; color: #777; border-color: #444; }
+    .theme-dark .control-button.active { background-color: #007bff; color: white; border-color: #0056b3; }
+    .theme-dark #recordOSCButton.active { background-color: #e06c75; border-color: #c05c65; color:white;}
+    .theme-dark #playOSCLoopButton.active { background-color: #e5c07b; border-color: #c5a05b; color: #282c34;}
+    .theme-dark #syncDMXNotesButton.active, .theme-dark #midiFeedbackToggleButton.active, .theme-dark #spectatorModeButton.active { background-color: #56b6c2; border-color: #3696a2; color: white;}
+    .theme-dark #mainCanvasContainer { background-color: #000; }
+    .theme-dark .modal-overlay { background-color: rgba(0,0,0,0.78); }
+    .theme-dark .modal-content { background-color: #282c34; color: #abb2bf; border: 1px solid #3e4451; box-shadow: 0 8px 25px rgba(0,0,0,0.5); }
+    .theme-dark .modal-content h3 { border-bottom: 1px solid #3e4451; color: #61afef; }
+    .theme-dark .modal-content p, .theme-dark .modal-content ul, .theme-dark .modal-content label { color: #abb2bf; }
+    .theme-dark .modal-content strong { color: #e5c07b; }
+    .theme-dark .modal-content code { background-color: #3a3f4b; color: #d19a66; }
+    .theme-dark .modal-content a { color: #61afef; }
+    .theme-dark .close-modal-button { color: #777; }
+    .theme-dark .close-modal-button:hover { color: #ccc; }
+    .theme-dark .modal-footer { border-top: 1px solid #3e4451; color: #777;}
+    .theme-dark .modal-content label { color: #98c379;}
+    .theme-dark .modal-content select, .theme-dark .modal-content input[type="range"], .theme-dark .modal-content input[type="number"], .theme-dark .modal-content input[type="text"], .theme-dark .modal-content textarea {
+      border: 1px solid #3e4451; background-color: #21252b; color: #abb2bf;
+    }
+    .theme-dark .modal-content .value-display { color: #61afef; }
+    .theme-dark .modal-content hr { background-color: #3e4451; }
+    .theme-dark #hud { background-color: rgba(20, 22, 28, 0.85); color: #c8ccd4; border: 1px solid #333842; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+    .theme-dark #hud b { color: #61afef; }
+    .theme-dark #hud span.highlight { color: #e5c07b; }
+    .theme-dark #hud span.status-ok { color: #98c379; }
+    .theme-dark #hud span.status-error { color: #e06c75; }
+    .theme-dark #hud span.status-warn { color: #d19a66; }
+
+    /* Light Theme */
+    body.theme-light { background-color: #f4f4f8; color: #333; }
+    .theme-light #sidebar { background-color: #e9e9ef; border-right: 1px solid #c0c0c8;}
+    .theme-light .control-button { background-color: #ccc; color: #333; border: 1px solid #aaa; }
+    .theme-light .control-button:hover { background-color: #bbb; color: #000; }
+    .theme-light .control-button:active { background-color: #aaa; }
+    .theme-light .control-button:disabled { background-color: #ddd; color: #999; border-color: #ccc; }
+    .theme-light .control-button.active { background-color: #007bff; color: white; border-color: #0056b3; }
+    .theme-light #recordOSCButton.active { background-color: #e06c75; border-color: #c05c65; color:white;}
+    .theme-light #playOSCLoopButton.active { background-color: #e5c07b; border-color: #c5a05b; color: #282c34;}
+    .theme-light #syncDMXNotesButton.active, .theme-light #midiFeedbackToggleButton.active, .theme-light #spectatorModeButton.active { background-color: #56b6c2; border-color: #3696a2; color: white;}
+    .theme-light #mainCanvasContainer { background-color: #e8e8ee; }
+    .theme-light .modal-overlay { background-color: rgba(50,50,50,0.6); }
+    .theme-light .modal-content { background-color: #fdfdff; color: #333; border: 1px solid #ccc; box-shadow: 0 6px 20px rgba(0,0,0,0.2); }
+    .theme-light .modal-content h3 { border-bottom: 1px solid #ddd; color: #0056b3; }
+    .theme-light .modal-content p, .theme-light .modal-content ul, .theme-light .modal-content label { color: #333; }
+    .theme-light .modal-content strong { color: #c678dd; }
+    .theme-light .modal-content code { background-color: #e8e8f0; color: #d19a66; border: 1px solid #ddd;}
+    .theme-light .modal-content a { color: #007bff; }
+    .theme-light .close-modal-button { color: #aaa; }
+    .theme-light .close-modal-button:hover { color: #777; }
+    .theme-light .modal-footer { border-top: 1px solid #ddd; color: #555;}
+    .theme-light .modal-content label { color: #28a745;}
+    .theme-light .modal-content select, .theme-light .modal-content input[type="range"], .theme-light .modal-content input[type="number"], .theme-light .modal-content input[type="text"], .theme-light .modal-content textarea {
+      border: 1px solid #ccc; background-color: #fff; color: #333;
+    }
+    .theme-light .modal-content .value-display { color: #007bff; }
+    .theme-light .modal-content hr { background-color: #ddd; }
+    .theme-light #hud { background-color: rgba(230, 230, 240, 0.9); color: #333; border: 1px solid #b0b0c0; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .theme-light #hud b { color: #0056b3; }
+    .theme-light #hud span.highlight { color: #c678dd; }
+    .theme-light #hud span.status-ok { color: #28a745; }
+    .theme-light #hud span.status-error { color: #dc3545; }
+    .theme-light #hud span.status-warn { color: #fd7e14; }
+
+  </style>
+</head>
+<body class="theme-dark">
+
+  <div id="sidebarHandle">☰</div>
+
+  <div id="sidebar">
+    <div id="sidebarContent">
+      <button id="info" class="control-button" title="Manual do Usuário (Shift+I)">ℹ️ Manual</button>
+      <button id="infoHudButton" class="control-button" title="Mostrar/Ocultar Info HUD">ℹ️ Info HUD</button> <!-- NOVO BOTÃO -->
+      <button id="settingsButton" class="control-button" title="Configurações MIDI, Câmera e Feedback (Shift+C)">⚙️ Configurações</button>
+      <button id="arpeggioSettingsButton" class="control-button" title="Configurações do Arpejador (Shift+A)">🎼 Arpejo</button>
+      <button id="oscConfigButton" class="control-button" title="Configurações OSC (Shift+K)">📡 OSC Config</button>
+      <button id="midiToggleButton" class="control-button" title="Ativar/Desativar Envio MIDI (M)">🎹 MIDI</button>
+      <button id="syncDMXNotesButton" class="control-button" title="Sincronizar Notas MIDI como OSC para DMX (Shift+D)">🎶 Sync DMX</button>
+      <button id="recordOSCButton" class="control-button" title="Gravar/Parar Gravação de Loop OSC (Shift+R)">⏺️ Gravar OSC</button>
+      <button id="playOSCLoopButton" class="control-button" disabled title="Tocar/Parar Loop OSC Gravado (Shift+P)">▶️ Loop OSC</button>
+      <button id="shapePresetButton" class="control-button" title="Gerenciar Presets de Formas (Shift+B)">💾 Presets</button>
+      <button id="midiFeedbackToggleButton" class="control-button" title="Ativar/Desativar Feedback MIDI para OSC (Shift+F)">🎤 MIDI In</button>
+      <button id="spectatorModeButton" class="control-button" title="Ativar/Desativar Modo Espectador (Shift+S)">👓 Espectador</button>
+      <button id="themeToggleButton" class="control-button" title="Alternar Tema Claro/Escuro (Shift+T)">🌙 Tema</button>
+      <button id="gestureSimToggleButton" class="control-button" title="Simular Gestos (Dev Mode)">🤖 Simulador</button>
+    </div>
+  </div>
+
+  <div id="mainCanvasContainer">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <!-- MODAL DE CONFIGURAÇÃO OSC -->
+  <div id="oscConfigModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeOscConfigModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Configurações OSC</h3>
+      <p>Configure o endereço IP e a Porta do servidor WebSocket OSC. Estas configurações são salvas localmente no seu navegador e aplicadas ao clicar em "Salvar e Reconectar".</p>
+      <label for="oscHostInput">IP do Servidor OSC (Ex: 127.0.0.1 ou 192.168.0.105):</label>
+      <input type="text" id="oscHostInput" placeholder="127.0.0.1">
+      <label for="oscPortInput">Porta do Servidor OSC (Ex: 8080):</label>
+      <input type="number" id="oscPortInput" placeholder="8080" min="1" max="65535">
+      <div class="button-group extra-margin-top">
+        <button id="saveOscConfigButton" class="control-button">Salvar e Reconectar</button>
+        <button id="closeOscConfigModalBtnGeneric" type="button" class="control-button">Fechar</button>
+      </div>
+      <div class="modal-footer">
+        <p>Ao abrir via <code>file:///</code>, o IP padrão é <code>127.0.0.1</code>. Para uso em rede (ex: celular), insira o IP do computador onde <code>osc_relayXX.py</code> está rodando.</p>
+        <p>Certifique-se que o script Python está escutando na porta configurada (padrão <code>8080</code>) e em <code>0.0.0.0</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configurações de Arpejo -->
+  <div id="arpeggioSettingsModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeArpeggioSettingsModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Configurações de Arpejo</h3>
+      <label for="arpeggioStyleSelect">Estilo de Arpejo:</label>
+      <select id="arpeggioStyleSelect"></select>
+      <label for="arpeggioBPM">Velocidade (BPM): <span id="arpeggioBPMValue" class="value-display">120</span></label>
+      <input type="range" id="arpeggioBPM" min="30" max="300" value="120">
+      <label for="noteIntervalSlider">Intervalo entre Notas (ms): <span id="noteIntervalValue" class="value-display">500</span></label>
+      <input type="range" id="noteIntervalSlider" min="50" max="2000" value="500">
+      <div class="modal-footer"><p>Configurações de arpejo são aplicadas em tempo real.</p></div>
+    </div>
+  </div>
+
+  <!-- Modal de Informações -->
+  <div id="infoModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Manual do Usuário - v44</h3> <!-- Version Update -->
+      <h4>Novidades da v44</h4>
+      <ul>
+        <li><strong>Correção de Erro:</strong> Restaurada a funcionalidade `drawFallbackAnimation` e suas dependências (`initFallbackShapes`, `drawLandmarks`) para corrigir erros de referência quando a câmera falha ou não está disponível.</li>
+        <li>Outras atualizações e melhorias podem ser listadas aqui.</li>
+      </ul>
+      <hr>
+      <h4>Novidades da v43</h4>
+      <ul>
+        <li><strong>Correção de Erro:</strong> Corrigido um erro de sintaxe (`Unexpected token 'else'`) que impedia o carregamento correto do JavaScript.</li>
+        <li><strong>Funcionalidade HUD Aprimorada:</strong> O botão "ℹ️ Info HUD" agora alterna corretamente a visibilidade do HUD, atualiza seu texto (Mostrar/Ocultar HUD) e seu estado visual (classe `active`).</li>
+      </ul>
+      <hr>
+      <h4>Novidades da v42</h4>
+      <ul>
+        <li><strong>HUD Reposicionado:</strong> O painel de status (HUD) foi movido para o canto inferior direito da tela.</li>
+        <li><strong>Botão Info HUD:</strong> Adicionado um botão "ℹ️ Info HUD" na barra lateral para mostrar/ocultar o HUD. O HUD é visível por padrão.</li>
+        <li>Ajustes de CSS para garantir que o HUD não sobreponha a barra lateral e mantenha a responsividade.</li>
+      </ul>
+      <hr>
+      <p><em>(Conteúdo anterior do manual omitido para brevidade)</em></p>
+      <div class="modal-footer">
+        <p>Desenvolvido por <a href="https://www.instagram.com/leocarvalho.exe" target="_blank" rel="noopener noreferrer">Leonardo Carvalho</a> — 2024</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configurações MIDI e Câmera -->
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeSettingsModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Configurações MIDI e Câmera</h3>
+      <label for="midiOutputSelect">Porta de Saída MIDI:</label>
+      <select id="midiOutputSelect"></select>
+      <label for="midiInputSelect">Porta de Entrada MIDI (para Feedback OSC):</label>
+      <select id="midiInputSelect"></select>
+      <hr>
+      <label for="cameraSelect">Selecionar Câmera:</label>
+      <select id="cameraSelect">
+        <option value="">Padrão do Navegador</option>
+      </select>
+      <div class="modal-footer"><p>As configurações são aplicadas em tempo real.</p></div>
+    </div>
+  </div>
+
+  <!-- Modal de Controle OSC -->
+  <div id="oscControlModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeOscControlModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Painel de Controle OSC</h3>
+      <label for="oscAddressInput">Endereço OSC:</label>
+      <input type="text" id="oscAddressInput" placeholder="/exemplo/endereco 123 'texto'">
+      <label for="oscArgsInput">Argumentos (JSON Array ou separados por espaço):</label>
+      <input type="text" id="oscArgsInput" placeholder='["texto", 123, 0.5]  ou  texto 123 0.5'>
+      <button id="sendTestOSCButton" class="control-button">Enviar Mensagem OSC</button>
+      <hr>
+      <label for="oscLoopDurationInput">Duração do Loop OSC Gravado (ms):</label>
+      <input type="number" id="oscLoopDurationInput" value="5000" min="100" step="100">
+      <hr>
+      <label for="oscLogTextarea">Log de Mensagens OSC (Enviadas/Recebidas):</label>
+      <textarea id="oscLogTextarea" readonly placeholder="Mensagens OSC do painel, loop e UDP aparecerão aqui..."></textarea>
+      <button id="clearOscLogButton" class="control-button">Limpar Log</button>
+      <button id="exportOscLogButton" class="control-button">Exportar Log</button>
+      <div class="modal-footer"><p>Use para testar, controlar ou monitorar OSC.</p></div>
+    </div>
+  </div>
+
+  <video id="video"></video>
+
+  <!-- Modal de Presets de Formas -->
+  <div id="shapePresetModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeShapePresetModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Gerenciador de Presets de Formas</h3>
+      <label for="shapeToPresetSelect">Selecionar Forma para Preset:</label>
+      <select id="shapeToPresetSelect"></select>
+      <label for="presetNameInput">Nome do Preset:</label>
+      <input type="text" id="presetNameInput" placeholder="Ex: Meu Preset Incrível">
+      <div class="button-group">
+        <button id="saveShapePresetButton" class="control-button">Salvar Preset da Forma Atual</button>
+        <button id="loadShapePresetButton" class="control-button">Carregar Preset na Forma Atual</button>
+      </div>
+      <label for="savedPresetsSelect">Presets Salvos:</label>
+      <select id="savedPresetsSelect" size="5"></select>
+      <div class="button-group">
+        <button id="deleteSelectedPresetButton" class="control-button">Deletar Preset Selecionado</button>
+      </div>
+      <hr>
+      <h4>Importar / Exportar Todos os Presets</h4>
+      <div class="button-group">
+        <button id="exportAllPresetsButton" class="control-button">Exportar Todos (JSON)</button>
+        <button id="importAllPresetsButton" class="control-button">Importar (JSON)</button>
+      </div>
+      <input type="file" id="importPresetFileInput" accept=".json" title="Importar arquivo de presets JSON">
+      <div class="modal-footer"><p>Salve e carregue configurações de formas. Presets são salvos localmente.</p></div>
+    </div>
+  </div>
+
+  <!-- <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script> --> <!-- Movido para o HEAD -->
+  <!-- <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script> --> <!-- Movido para o HEAD -->
+  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js?v=44"></script>
+  <script src="main44.js" defer></script> <!-- ATUALIZADO PARA main44.js -->
+  <div id="hud"> <!-- HUD é visível por padrão, JS controlará a classe .hidden -->
+    <button id="reconnectOSCButton" class="control-button">Reconnect OSC</button>
+  </div>
+
+</body>
+</html>
