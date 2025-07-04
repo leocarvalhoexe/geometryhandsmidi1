@@ -2,6 +2,19 @@
 // MIDI SHAPE MANIPULATOR v43 - main43.js
 // ==========================================================================
 
+// === DEBUGGING ===
+const DEBUG_MODE = true; // Defina como false para desabilitar logs de debug
+function logDebug(message, data = null) {
+  if (DEBUG_MODE) {
+    const timestamp = new Date().toLocaleTimeString();
+    if (data !== null) {
+      console.log(`[DEBUG ${timestamp}] ${message}`, data);
+    } else {
+      console.log(`[DEBUG ${timestamp}] ${message}`);
+    }
+  }
+}
+
 // === GLOBAL VARIABLES & CONSTANTS ===
 const sidebar = document.getElementById('sidebar');
 const sidebarHandle = document.getElementById('sidebarHandle');
@@ -383,6 +396,7 @@ function processShapeNotes(shape, isPulsing, pulseValue) {
 
 // async function populateCameraSelect() { /* ... (implementation as in v41) ... */ } // Removida duplicata
 async function initializeCamera(deviceId = null) {
+    logDebug(`Tentando inicializar câmera. Device ID: ${deviceId || 'Padrão'}`);
     console.log(`Inicializando câmera com deviceId: ${deviceId || 'Padrão'}`); cameraError = false;
     if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
     
@@ -495,11 +509,13 @@ async function initializeCamera(deviceId = null) {
         await camera.start(); // Inicia a câmera
         
         console.log("Camera e MediaPipe inicializados com sucesso.");
+        logDebug("Câmera e MediaPipe inicializados com sucesso.", { deviceId: deviceId });
         currentCameraDeviceId = deviceId;
         localStorage.setItem(CAMERA_DEVICE_ID_KEY, currentCameraDeviceId || '');
 
     } catch (error) {
         console.error(`Falha ao inicializar webcam (ID: ${deviceId || 'Padrão'}):`, error);
+        logDebug("Falha ao inicializar webcam.", { deviceId: deviceId, error: error });
         displayGlobalError(`Falha webcam (${error.name || 'Error'}): ${error.message || 'Desconhecido'}. Verifique permissões.`, 20000);
         cameraError = true;
         if (mediaStream) {
@@ -525,8 +541,10 @@ async function initializeCamera(deviceId = null) {
 
 // === MEDIAPIPE HANDS & CAMERA (Mantendo a implementação principal abaixo) ===
 async function populateCameraSelect() {
+    logDebug("Populando lista de câmeras...");
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
         console.warn("navigator.mediaDevices.enumerateDevices() não é suportado.");
+        logDebug("enumerateDevices() não suportado.");
         if(cameraSelectElement) cameraSelectElement.disabled = true;
         return;
     }
@@ -568,6 +586,7 @@ async function populateCameraSelect() {
 // A segunda initializeCamera foi removida. A versão acima (mais nova) é a única utilizada.
 
 function onResults(results) {
+  logDebug("onResults chamado.", results);
   // console.log("onResults chamado. Resultados:", results); // Log muito frequente
   ctx.fillStyle = 'rgba(0,0,0,0.08)'; // Efeito de "rastro" ou limpar frame anterior com opacidade
   ctx.fillRect(0,0,canvasElement.width, canvasElement.height);
@@ -727,71 +746,9 @@ function onResults(results) {
     }
   }
 }
-function drawLandmarks(landmarksArray, handedness = "Unknown") { // Adicionado handedness para cor
-  if (!landmarksArray || landmarksArray.length === 0 || spectatorModeActive) return;
-  const connections = [[0,1],[1,2],[2,3],[3,4], [0,5],[5,6],[6,7],[7,8], [5,9],[9,10],[10,11],[11,12], [9,13],[13,14],[14,15],[15,16], [13,17],[17,18],[18,19],[19,20], [0,17]];
+// drawLandmarks, initFallbackShapes, drawFallbackAnimation são definidas APÓS onResults.
+// O bloco de código malformado que estava aqui foi removido.
 
-  // Define a cor baseada na lateralidade da mão
-  let strokeColor = 'lime'; // Cor padrão
-  if (handedness === 'Left') {
-    strokeColor = '#00FFFF'; // Ciano para mão esquerda
-  } else if (handedness === 'Right') {
-    strokeColor = '#FF00FF'; // Magenta para mão direita
-  }
-
-  ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = 2;
-
-  for (const conn of connections) {
-    const lm1 = landmarksArray[conn[0]];
-    const lm2 = landmarksArray[conn[1]];
-    if (lm1 && lm2) {
-      ctx.beginPath();
-      ctx.moveTo(canvasElement.width - (lm1.x * canvasElement.width), lm1.y * canvasElement.height);
-      ctx.lineTo(canvasElement.width - (lm2.x * canvasElement.width), lm2.y * canvasElement.height);
-      ctx.stroke();
-    }
-  }
-  // Opcional: Desenhar pontos nos landmarks
-  /*landmarksArray.forEach(lm => {
-    if (lm) {
-      ctx.beginPath();
-      ctx.arc(canvasElement.width - (lm.x * canvasElement.width), lm.y * canvasElement.height, 3, 0, Math.PI * 2);
-      ctx.fillStyle = strokeColor;
-      ctx.fill();
-    }
-  });*/
-}
-function initFallbackShapes() { if (fallbackShapes.length > 0) return; const numShapes = 5; const colors = ["#FF00FF", "#00FFFF", "#FFFF00", "#FF0000", "#00FF00"]; for (let i = 0; i < numShapes; i++) { fallbackShapes.push({ x: Math.random() * canvasElement.width, y: Math.random() * canvasElement.height, radius: 20 + Math.random() * 30, color: colors[i % colors.length], vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4, sides: 3 + Math.floor(Math.random() * 5) }); } }
-function drawFallbackAnimation() {
-  if (!canvasElement || !ctx) return; // Adiciona verificação de segurança
-  if (fallbackShapes.length === 0) initFallbackShapes();
-  ctx.fillStyle = 'rgba(0,0,0,0.1)';
-  ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
-  ctx.font = "20px Arial"; ctx.fillStyle = "#777"; ctx.textAlign = "center";
-  ctx.fillText("Detecção de mãos indisponível.", canvasElement.width / 2, canvasElement.height / 2 - 50);
-  fallbackShapes.forEach(shape => { shape.x += shape.vx; shape.y += shape.vy; if (shape.x - shape.radius < 0 || shape.x + shape.radius > canvasElement.width) shape.vx *= -1; if (shape.y - shape.radius < 0 || shape.y + shape.radius > canvasElement.height) shape.vy *= -1; ctx.beginPath(); for (let i = 0; i < shape.sides; i++) { const angle = (i / shape.sides) * Math.PI * 2 + (performance.now() / 1000) * (shape.vx > 0 ? 0.5 : -0.5) ; const x = shape.x + shape.radius * Math.cos(angle); const y = shape.y + shape.radius * Math.sin(angle); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.closePath(); ctx.strokeStyle = shape.color; ctx.lineWidth = 3; ctx.stroke(); });
-}
-    if (operationMode === 'one_person') { let lH = null, rH = null; results.multiHandLandmarks.forEach((landmarks, i) => { if (!spectatorModeActive) drawLandmarks(landmarks); const handedness = results.multiHandedness[i]?.label; if (handedness === "Left" && !lH) lH = landmarks; else if (handedness === "Right" && !rH) rH = landmarks; }); shapes[0].leftHandLandmarks = lH; shapes[0].rightHandLandmarks = rH; if (shapes.length > 1) { shapes[1].leftHandLandmarks = null; shapes[1].rightHandLandmarks = null; }
-    } else { let assignedL = [false,false], assignedR = [false,false]; results.multiHandLandmarks.forEach((landmarks, i) => { if (!spectatorModeActive) drawLandmarks(landmarks); const handedness = results.multiHandedness[i]?.label; for(let j=0; j<shapes.length; j++){ if(handedness === "Left" && !shapes[j].leftHandLandmarks && !assignedL[j]) { shapes[j].leftHandLandmarks = landmarks; assignedL[j]=true; break;} if(handedness === "Right" && !shapes[j].rightHandLandmarks && !assignedR[j]) { shapes[j].rightHandLandmarks = landmarks; assignedR[j]=true; break;} } }); }
-  }
-  shapes.forEach(shape => { if (spectatorModeActive) { shape.activeGesture = null; return; } let gestureProcessed = false; let currentGesture = null; let wristCount = 0; let avgWristX = 0; let avgWristY = 0; if (shape.leftHandLandmarks?.[0]) { avgWristX += shape.leftHandLandmarks[0].x; avgWristY += shape.leftHandLandmarks[0].y; wristCount++; } if (shape.rightHandLandmarks?.[0]) { avgWristX += shape.rightHandLandmarks[0].x; avgWristY += shape.rightHandLandmarks[0].y; wristCount++; } if (wristCount > 0) { shape.centerX = shape.centerX * 0.85 + (canvasElement.width - (avgWristX/wristCount * canvasElement.width)) * 0.15; shape.centerY = shape.centerY * 0.85 + (avgWristY/wristCount * canvasElement.height) * 0.15; }
-    if (shape.leftHandLandmarks && shape.rightHandLandmarks) { const lThumb = shape.leftHandLandmarks[4], rThumb = shape.rightHandLandmarks[4]; const lIdxCurl = shape.leftHandLandmarks[8].y > shape.leftHandLandmarks[6].y; const rIdxCurl = shape.rightHandLandmarks[8].y > shape.rightHandLandmarks[6].y; if (lIdxCurl && rIdxCurl) { currentGesture = 'resize'; gestureProcessed = true; const dist = distance(lThumb.x, lThumb.y, rThumb.x, rThumb.y) * canvasElement.width; const normDist = Math.max(0,Math.min(1, (dist - 50)/(canvasElement.width*0.3))); shape.radius = shape.radius*0.8 + (30 + normDist * 270)*0.2; if (Math.abs(shape.radius - shape.lastResizeRadius) > 10 && (performance.now() - shape.lastResizeTime > 500)) { shape.lastResizeRadius = shape.radius; shape.lastResizeTime = performance.now(); } } }
-    if (!gestureProcessed && shape.leftHandLandmarks) { const idx = shape.leftHandLandmarks[8], thumb = shape.leftHandLandmarks[4]; const pinchDist = distance(idx.x, idx.y, thumb.x, thumb.y) * canvasElement.width; const pinchCanvasX = canvasElement.width - ((idx.x + thumb.x)/2 * canvasElement.width); const pinchCanvasY = ((idx.y + thumb.y)/2 * canvasElement.height); if (isTouchingCircle(pinchCanvasX, pinchCanvasY, shape.centerX, shape.centerY, shape.radius, shape.radius * 0.6)) { currentGesture = 'sides'; gestureProcessed = true; let newSides = (pinchDist > 150*1.2) ? 100 : Math.round(3 + Math.max(0,Math.min(1,(pinchDist-10)/150)) * (20-3)); newSides = Math.max(3, Math.min(100, newSides)); if (newSides !== shape.sides && (performance.now() - shape.lastSideChangeTime > SIDE_CHANGE_DEBOUNCE_MS)) { shape.sides = newSides; shape.lastSideChangeTime = performance.now(); if(shape.currentEdgeIndex >= newSides) shape.currentEdgeIndex = Math.max(0, newSides-1); turnOffAllActiveNotesForShape(shape); } } }
-    if (!gestureProcessed && shape.rightHandLandmarks) currentGesture = 'liquify';
-    const oscGesture = currentGesture || 'none'; if (shape.lastSentActiveGesture !== oscGesture) { sendOSCMessage(`/forma/${shape.id+1}/gestureActivated`, oscGesture); shape.lastSentActiveGesture = oscGesture; } shape.activeGesture = currentGesture;
-  });
-  let pVal = 0; if(pulseModeActive) { pulseTime = performance.now()*0.001; pVal = Math.sin(pulseTime*pulseFrequency*2*Math.PI); } shapes.forEach(s => drawShape(s, pulseModeActive, pVal));
-  const visNow = performance.now(); ctx.font="15px Arial"; ctx.textAlign="center"; notesToVisualize = notesToVisualize.filter(n => { const age = visNow - n.timestamp; if (age < 750) { ctx.fillStyle = `rgba(255,255,255,${1-(age/750)})`; ctx.fillText(n.noteName, n.x, n.y); return true; } return false; });
-  updateHUD();
-  if (outputPopupWindow && !outputPopupWindow.closed && popupCanvasCtx) { try { const pc = outputPopupWindow.document.getElementById('popupCanvas'); if (pc.width !== outputPopupWindow.innerWidth || pc.height !== outputPopupWindow.innerHeight) { pc.width = outputPopupWindow.innerWidth; pc.height = outputPopupWindow.innerHeight;} popupCanvasCtx.fillStyle='rgba(0,0,0,0.1)'; popupCanvasCtx.fillRect(0,0,pc.width,pc.height); popupCanvasCtx.drawImage(canvasElement,0,0,pc.width,pc.height); } catch(e) { if(e.name === "InvalidStateError" || outputPopupWindow?.closed) {popupCanvasCtx=null; outputPopupWindow=null;} } }
-}
-function drawLandmarks(landmarksArray) { if (!landmarksArray || landmarksArray.length === 0 || spectatorModeActive) return; const connections = [[0,1],[1,2],[2,3],[3,4], [0,5],[5,6],[6,7],[7,8], [5,9],[9,10],[10,11],[11,12], [9,13],[13,14],[14,15],[15,16], [13,17],[17,18],[18,19],[19,20], [0,17]]; ctx.strokeStyle = 'lime'; ctx.lineWidth = 2; for (const conn of connections) { const lm1 = landmarksArray[conn[0]]; const lm2 = landmarksArray[conn[1]]; if (lm1 && lm2) { ctx.beginPath(); ctx.moveTo(canvasElement.width - (lm1.x * canvasElement.width), lm1.y * canvasElement.height); ctx.lineTo(canvasElement.width - (lm2.x * canvasElement.width), lm2.y * canvasElement.height); ctx.stroke(); } } }
-function initFallbackShapes() { if (fallbackShapes.length > 0) return; const numShapes = 5; const colors = ["#FF00FF", "#00FFFF", "#FFFF00", "#FF0000", "#00FF00"]; for (let i = 0; i < numShapes; i++) { fallbackShapes.push({ x: Math.random() * canvasElement.width, y: Math.random() * canvasElement.height, radius: 20 + Math.random() * 30, color: colors[i % colors.length], vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4, sides: 3 + Math.floor(Math.random() * 5) }); } }
-function drawFallbackAnimation() { if (fallbackShapes.length === 0) initFallbackShapes(); ctx.fillStyle = 'rgba(0,0,0,0.1)'; ctx.fillRect(0, 0, canvasElement.width, canvasElement.height); ctx.font = "20px Arial"; ctx.fillStyle = "#777"; ctx.textAlign = "center"; ctx.fillText("Detecção de mãos indisponível.", canvasElement.width / 2, canvasElement.height / 2 - 50); fallbackShapes.forEach(shape => { shape.x += shape.vx; shape.y += shape.vy; if (shape.x - shape.radius < 0 || shape.x + shape.radius > canvasElement.width) shape.vx *= -1; if (shape.y - shape.radius < 0 || shape.y + shape.radius > canvasElement.height) shape.vy *= -1; ctx.beginPath(); for (let i = 0; i < shape.sides; i++) { const angle = (i / shape.sides) * Math.PI * 2 + (performance.now() / 1000) * (shape.vx > 0 ? 0.5 : -0.5) ; const x = shape.x + shape.radius * Math.cos(angle); const y = shape.y + shape.radius * Math.sin(angle); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.closePath(); ctx.strokeStyle = shape.color; ctx.lineWidth = 3; ctx.stroke(); }); }
-
-
-function updateMidiDeviceLists() { /* ... */ } function populateMidiOutputSelect() { /* ... */ } function populateMidiInputSelect() { /* ... */ } function setMidiInput(inputPort) { /* ... */ } async function initMidi() { /* ... */ } function handleMidiMessage(event) { /* ... */ } function sendMidiNoteOn(note, velocity, channel, shapeId = -1) { /* ... */ } function sendMidiNoteOff(note, channel, shapeId = -1) { /* ... */ } function sendPitchBend(bendValue, channel) { /* ... */ } function sendMidiCC(cc, value, channel) { /* ... */ } function turnOffAllActiveNotesForShape(shape) { /* ... */ } function turnOffAllActiveNotes() { /* ... */ } function resetMidiSystem() { /* ... */ }
 // === MIDI MANAGER (Copied from v41, shortened for brevity) ===
 function updateMidiDeviceLists() { availableMidiOutputs.clear(); availableMidiInputs.clear(); if (!midiAccess) return; midiAccess.outputs.forEach(output => availableMidiOutputs.set(output.id, output)); midiAccess.inputs.forEach(input => availableMidiInputs.set(input.id, input)); populateMidiOutputSelect(); populateMidiInputSelect(); }
 function populateMidiOutputSelect() { if(!midiOutputSelect) return; const prevId = midiOutput ? midiOutput.id : null; midiOutputSelect.innerHTML = ''; if (availableMidiOutputs.size === 0) { midiOutputSelect.add(new Option("Nenhuma saída MIDI", "", true, true)); midiOutput = null; return; } availableMidiOutputs.forEach(out => midiOutputSelect.add(new Option(out.name, out.id))); if (prevId && availableMidiOutputs.has(prevId)) midiOutputSelect.value = prevId; midiOutput = availableMidiOutputs.get(midiOutputSelect.value) || null; }
@@ -803,12 +760,56 @@ function sendMidiNoteOn(note, velocity, channel, shapeId = -1) { if (spectatorMo
 function sendMidiNoteOff(note, channel, shapeId = -1) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0, Math.min(15, channel)); const n = Math.max(0, Math.min(127, Math.round(note))); midiOutput.send([0x80 + ch, n, 0]); sendOSCMessage(`/forma/${shapeId}/noteOff`, n, ch); if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, 0); }
 function sendPitchBend(bendValue, channel) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0,Math.min(15,channel)); const bend = Math.max(0,Math.min(16383,Math.round(bendValue))); midiOutput.send([0xE0+ch, bend & 0x7F, (bend>>7)&0x7F]); }
 function sendMidiCC(cc, value, channel) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0,Math.min(15,channel)); const c = Math.max(0,Math.min(119,Math.round(cc))); const v = Math.max(0,Math.min(127,Math.round(value))); midiOutput.send([0xB0+ch, c, v]); }
-function turnOffAllActiveNotesForShape(shape) { if (spectatorModeActive) return; const origMidiEnabled = midiEnabled; midiEnabled = true; Object.values(shape.activeMidiNotes).forEach(noteInfo => { if (noteInfo.playing) sendMidiNoteOff(noteInfo.note, shape.midiChannel, shape.id + 1); if (noteInfo.staccatoTimer) clearTimeout(noteInfo.staccatoTimer); }); shape.activeMidiNotes = {}; midiEnabled = origMidiEnabled; }
-function turnOffAllActiveNotes() { if (spectatorModeActive) return; const origMidiEnabled = midiEnabled; midiEnabled = true; shapes.forEach(shape => turnOffAllActiveNotesForShape(shape)); midiEnabled = origMidiEnabled; }
-function resetMidiSystem() { if (spectatorModeActive) return; console.log("MIDI Reset."); turnOffAllActiveNotes(); const origMidiEnabled = midiEnabled; midiEnabled = true; if (midiOutput) { for (let ch=0; ch<16; ch++) { midiOutput.send([0xB0+ch,120,0]); midiOutput.send([0xB0+ch,121,0]); }} midiEnabled = origMidiEnabled; shapes.forEach(s => { s.currentPitchBend=8192;s.reverbAmount=0;s.delayAmount=0;s.panValue=64;s.brightnessValue=64;s.modWheelValue=0;s.resonanceValue=0;s.lastSentReverb=-1;s.lastSentDelay=-1;s.lastSentPan=-1;s.lastSentBrightness=-1;s.lastSentModWheel=-1;s.lastSentResonance=-1; }); updateHUD(); sendAllGlobalStatesOSC(); displayGlobalError("Sistema MIDI Resetado.",3000); logOSC("SYSTEM","MIDI Reset",[]); }
+function turnOffAllActiveNotesForShape(shape) {
+    if (spectatorModeActive) return;
+    const origMidiEnabled = midiEnabled;
+    midiEnabled = true; // Temporariamente habilita MIDI para garantir que as notas OFF sejam enviadas
+    logDebug(`Desligando todas as notas ativas para a forma ${shape.id}`);
+    Object.values(shape.activeMidiNotes).forEach(noteInfo => {
+        if (noteInfo.playing) {
+            sendMidiNoteOff(noteInfo.note, shape.midiChannel, shape.id + 1);
+        }
+        if (noteInfo.staccatoTimer) {
+            clearTimeout(noteInfo.staccatoTimer);
+        }
+    });
+    shape.activeMidiNotes = {};
+    midiEnabled = origMidiEnabled; // Restaura o estado original do MIDI
+}
+function turnOffAllActiveNotes() {
+    if (spectatorModeActive) return;
+    logDebug("Desligando todas as notas ativas para todas as formas.");
+    const origMidiEnabled = midiEnabled;
+    midiEnabled = true; // Temporariamente habilita MIDI
+    shapes.forEach(shape => turnOffAllActiveNotesForShape(shape));
+    midiEnabled = origMidiEnabled; // Restaura o estado original
+}
+function resetMidiSystem() {
+    if (spectatorModeActive) return;
+    console.log("MIDI Reset.");
+    logDebug("Sistema MIDI Resetado.");
+    turnOffAllActiveNotes(); // Isso já usa a versão com logDebug
+    const origMidiEnabled = midiEnabled;
+    midiEnabled = true; // Temporariamente habilita MIDI
+    if (midiOutput) {
+        for (let ch = 0; ch < 16; ch++) {
+            midiOutput.send([0xB0 + ch, 120, 0]); // All Sound Off
+            midiOutput.send([0xB0 + ch, 121, 0]); // Reset All Controllers
+        }
+    }
+    midiEnabled = origMidiEnabled; // Restaura o estado original
+    shapes.forEach(s => {
+        s.currentPitchBend = 8192; s.reverbAmount = 0; s.delayAmount = 0; s.panValue = 64;
+        s.brightnessValue = 64; s.modWheelValue = 0; s.resonanceValue = 0;
+        s.lastSentReverb = -1; s.lastSentDelay = -1; s.lastSentPan = -1;
+        s.lastSentBrightness = -1; s.lastSentModWheel = -1; s.lastSentResonance = -1;
+    });
+    updateHUD();
+    sendAllGlobalStatesOSC();
+    displayGlobalError("Sistema MIDI Resetado.", 3000);
+    logOSC("SYSTEM", "MIDI Reset", []);
+}
 
-
-function loadOscSettings() { /* ... */ } function saveOscSettings(host, port) { /* ... */ } function sendOSCMessage(address, ...args) { /* ... */ } function sendOSCHeartbeat() { /* ... */ } function setupOSC() { /* ... */ } function handleIncomingExternalOSC(oscMessage) { /* ... */ } function sendAllGlobalStatesOSC() { /* ... */ } function logOSC(source, address, args, isSeparator = false) { /* ... */ } function exportOSCLog() { /* ... */ }
 // === OSC MANAGER (Copied from v41, shortened for brevity) ===
 function loadOscSettings() { const stored = localStorage.getItem(OSC_SETTINGS_KEY); let loadedHost = location.hostname; let loadedPort = 8080; if (stored) { try { const s = JSON.parse(stored); if (s.host) loadedHost = s.host; if (s.port) loadedPort = parseInt(s.port,10); } catch(e){ loadedHost = location.hostname || "127.0.0.1"; loadedPort = 8080; }} else { loadedHost = location.hostname || "127.0.0.1"; loadedPort = 8080; } OSC_HOST = loadedHost || "127.0.0.1"; OSC_PORT = loadedPort || 8080; if (oscHostInput) oscHostInput.value = OSC_HOST; if (oscPortInput) oscPortInput.value = OSC_PORT; console.log(`OSC Config: ${OSC_HOST}:${OSC_PORT}`); }
 
@@ -840,16 +841,112 @@ function saveOscSettings(host, port) {
     }
 }
 
-function sendOSCMessage(address, ...args) { if (spectatorModeActive && !address.startsWith('/ping')) return; if (osc && osc.status() === OSC.STATUS.IS_OPEN) { const message = new OSC.Message(address, ...args); try { osc.send(message); } catch (error) { if (osc.status() !== OSC.STATUS.IS_OPEN && reconnectOSCButton) { reconnectOSCButton.style.display = 'inline-block'; oscStatus = "OSC Erro Envio"; updateHUD();}}} if (isRecordingOSC && !address.startsWith('/ping')) recordedOSCSequence.push({ timestamp: performance.now() - recordingStartTime, message: { address: message.address, args: message.args } }); } else { if (reconnectOSCButton && osc && osc.status() !== OSC.STATUS.IS_OPEN) reconnectOSCButton.style.display = 'inline-block'; } }
+function sendOSCMessage(address, ...args) {
+    logDebug(`Enviando OSC: ${address}`, args);
+    if (spectatorModeActive && !address.startsWith('/ping')) return;
+    if (osc && osc.status() === OSC.STATUS.IS_OPEN) {
+        const message = new OSC.Message(address, ...args);
+        try {
+            osc.send(message);
+        } catch (error) {
+            logDebug("Erro ao enviar OSC", { address, args, error });
+            if (osc.status() !== OSC.STATUS.IS_OPEN && reconnectOSCButton) {
+                reconnectOSCButton.style.display = 'inline-block';
+                oscStatus = "OSC Erro Envio";
+                updateHUD();
+            }
+        }
+    } else {
+        logDebug("OSC não conectado, não foi possível enviar.", { address, args, oscStatus: osc?.status() });
+        if (reconnectOSCButton && osc && osc.status() !== OSC.STATUS.IS_OPEN) {
+            reconnectOSCButton.style.display = 'inline-block';
+        }
+    }
+    if (isRecordingOSC && !address.startsWith('/ping')) {
+        recordedOSCSequence.push({
+            timestamp: performance.now() - recordingStartTime,
+            message: { address: address, args: args } // Store address and args directly
+        });
+    }
+}
 function sendOSCHeartbeat() { sendOSCMessage('/ping', Date.now()); }
-function setupOSC() { if (osc && osc.status() === OSC.STATUS.IS_OPEN) osc.close(); if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId); oscHeartbeatIntervalId = null; console.log(`Conectando OSC: ws://${OSC_HOST}:${OSC_PORT}`); osc = new OSC({ plugin: new OSC.WebsocketClientPlugin({ host: OSC_HOST, port: OSC_PORT, secure: false }) }); osc.on('open', () => { oscStatus = `OSC Conectado (ws://${OSC_HOST}:${OSC_PORT})`; console.log(oscStatus); if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId); oscHeartbeatIntervalId = setInterval(sendOSCHeartbeat, 5000); sendOSCHeartbeat(); sendAllGlobalStatesOSC(); if (reconnectOSCButton) reconnectOSCButton.style.display = 'none'; updateHUD(); }); osc.on('close', (event) => { oscStatus = "OSC Desconectado"; if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId); oscHeartbeatIntervalId = null; if (reconnectOSCButton) reconnectOSCButton.style.display = 'inline-block'; updateHUD(); }); osc.on('error', (err) => { oscStatus = "OSC Erro Conexão"; if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId); oscHeartbeatIntervalId = null; if (reconnectOSCButton) reconnectOSCButton.style.display = 'inline-block'; updateHUD(); }); osc.on('message', (msg) => { try { let pMsg = msg; if (msg.args && msg.args.length > 0 && typeof msg.args[0] === 'string') { try { const pJson = JSON.parse(msg.args[0]); if (pJson.type === "confirmation" || (pJson.address && pJson.args)) pMsg = pJson; } catch (e) {} } if (pMsg && pMsg.address) { logOSC("IN (UDP)", pMsg.address, pMsg.args); handleIncomingExternalOSC(pMsg); } } catch (e) {} }); try { osc.open(); } catch (error) { oscStatus = `OSC Falha: ${error.message}`; if (reconnectOSCButton) reconnectOSCButton.style.display = 'inline-block'; updateHUD(); } osc.on('/global/setExternalBPM', msg => { /* ... */ }); osc.on('/global/setScale', msg => { /* ... */ }); }
-function handleIncomingExternalOSC(oscMessage) { /* ... */ }
-function sendAllGlobalStatesOSC() { if (spectatorModeActive) return; sendOSCMessage('/global/state/midiEnabled', midiEnabled?1:0); sendOSCMessage('/global/state/pulseMode', pulseModeActive?1:0); sendOSCMessage('/global/state/staccatoMode', staccatoModeActive?1:0); /* ... more ... */ }
+function setupOSC() {
+    logDebug(`Configurando OSC para ws://${OSC_HOST}:${OSC_PORT}`);
+    if (osc && osc.status() === OSC.STATUS.IS_OPEN) { logDebug("Fechando conexão OSC existente."); osc.close(); }
+    if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId);
+    oscHeartbeatIntervalId = null;
+    console.log(`Conectando OSC: ws://${OSC_HOST}:${OSC_PORT}`);
+    osc = new OSC({ plugin: new OSC.WebsocketClientPlugin({ host: OSC_HOST, port: OSC_PORT, secure: false }) });
+    osc.on('open', () => {
+        oscStatus = `OSC Conectado (ws://${OSC_HOST}:${OSC_PORT})`;
+        console.log(oscStatus);
+        logDebug("OSC conectado.");
+        if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId);
+        oscHeartbeatIntervalId = setInterval(sendOSCHeartbeat, 5000);
+        sendOSCHeartbeat();
+        sendAllGlobalStatesOSC();
+        if (reconnectOSCButton) reconnectOSCButton.style.display = 'none';
+        updateHUD();
+    });
+    osc.on('close', (event) => {
+        oscStatus = "OSC Desconectado";
+        logDebug("OSC desconectado.", event);
+        if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId);
+        oscHeartbeatIntervalId = null;
+        if (reconnectOSCButton) reconnectOSCButton.style.display = 'inline-block';
+        updateHUD();
+    });
+    osc.on('error', (err) => {
+        oscStatus = "OSC Erro Conexão";
+        logDebug("OSC Erro Conexão.", err);
+        if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId);
+        oscHeartbeatIntervalId = null;
+        if (reconnectOSCButton) reconnectOSCButton.style.display = 'inline-block';
+        updateHUD();
+    });
+    osc.on('message', (msg) => {
+        logDebug("OSC Mensagem recebida (bruta):", msg);
+        try {
+            let pMsg = msg;
+            // Tentativa de parse se for string JSON (comum em alguns relays)
+            if (msg.args && msg.args.length > 0 && typeof msg.args[0] === 'string') {
+                try {
+                    const pJson = JSON.parse(msg.args[0]);
+                    if (pJson.type === "confirmation" || (pJson.address && pJson.args)) {
+                        pMsg = pJson;
+                        logDebug("OSC Mensagem (após parse JSON de args[0]):", pMsg);
+                    }
+                } catch (e) { /* não era JSON, ignora */ }
+            }
+            if (pMsg && pMsg.address) {
+                logOSC("IN (UDP)", pMsg.address, pMsg.args); // Mantém log original
+                handleIncomingExternalOSC(pMsg);
+            } else {
+                logDebug("Mensagem OSC recebida ignorada (sem endereço após processamento):", pMsg);
+            }
+        } catch (e) {
+            logDebug("Erro ao processar mensagem OSC recebida:", { error: e, originalMessage: msg });
+        }
+    });
+    try {
+        osc.open();
+    } catch (error) {
+        oscStatus = `OSC Falha: ${error.message}`;
+        logDebug("Falha ao abrir conexão OSC.", error);
+        if (reconnectOSCButton) reconnectOSCButton.style.display = 'inline-block';
+        updateHUD();
+    }
+    osc.on('/global/setExternalBPM', msg => { /* ... */ });
+    osc.on('/global/setScale', msg => { /* ... */ });
+}
+function handleIncomingExternalOSC(oscMessage) {
+    logDebug("Processando OSC Externo:", oscMessage);
+    /* ... (restante da implementação) ... */
+}
+function sendAllGlobalStatesOSC() { if (spectatorModeActive) return; logDebug("Enviando todos os estados globais via OSC."); sendOSCMessage('/global/state/midiEnabled', midiEnabled?1:0); sendOSCMessage('/global/state/pulseMode', pulseModeActive?1:0); sendOSCMessage('/global/state/staccatoMode', staccatoModeActive?1:0); /* ... more ... */ }
 function logOSC(source, address, args, isSeparator = false) { if (oscLogTextarea) { if (isSeparator) { oscLogTextarea.value += `--- Log Separator (${new Date().toLocaleTimeString()}) ---\n`; lastLogSource = "SEPARATOR"; oscLogTextarea.scrollTop = oscLogTextarea.scrollHeight; return; } const timestamp = new Date().toLocaleTimeString(); let sourcePrefix = "SYS"; switch(source.toUpperCase()){ case "OUT": sourcePrefix="OUT"; break; case "IN (UDP)": sourcePrefix="UDP"; break; case "MIDI->OSC": sourcePrefix="MIDI"; break; case "LOOP": sourcePrefix="LOOP"; break; case "PANEL": sourcePrefix="PANEL"; break; case "REC INFO": sourcePrefix="REC"; break;} if (source.toUpperCase() !== lastLogSource && lastLogSource !== "" && lastLogSource !== "SEPARATOR") oscLogTextarea.value += `-------------------------------------\n`; lastLogSource = source.toUpperCase(); const type = args && args.length > 0 && typeof args[0] === 'object' && args[0].type ? ` (${args.map(a => a.type).join(', ')})` : ''; oscLogTextarea.value += `${timestamp} [${sourcePrefix}] ${address}${type} ${JSON.stringify(args)}\n`; oscLogTextarea.scrollTop = oscLogTextarea.scrollHeight; } }
 function exportOSCLog() { /* ... */ }
 
-
-function getShapeState(shape) { /* ... */ } function applyShapeState(shape, state) { /* ... */ } function saveShapePreset() { /* ... */ } function loadShapePreset() { /* ... */ } function deleteSelectedPreset() { /* ... */ } function populateSavedPresetsSelect() { /* ... */ } function exportAllPresets() { /* ... */ } function importAllPresets() { /* ... */ } function handleImportPresetFile(event) { /* ... */ } function loadPresetsFromStorage() { /* ... */ } function populateShapeToPresetSelect() { /* ... */ } function initPresetManager() { /* ... */ }
 // === PRESET MANAGER (Copied from v41, shortened for brevity) ===
 function getShapeState(shape) { return { radius: shape.radius, sides: shape.sides, reverbAmount: shape.reverbAmount, delayAmount: shape.delayAmount, panValue: shape.panValue, brightnessValue: shape.brightnessValue, modWheelValue: shape.modWheelValue, resonanceValue: shape.resonanceValue, }; }
 function applyShapeState(shape, state) { if (!state) return; shape.radius = state.radius !== undefined ? state.radius : shape.radius; shape.sides = state.sides !== undefined ? state.sides : shape.sides; /* ... more ... */ if (state.sides !== undefined) { if(shape.currentEdgeIndex >= shape.sides) shape.currentEdgeIndex = Math.max(0, shape.sides-1); turnOffAllActiveNotesForShape(shape); } updateHUD(); }
@@ -864,16 +961,11 @@ function loadPresetsFromStorage() { const stored = localStorage.getItem(PRESETS_
 function populateShapeToPresetSelect() { if (!shapeToPresetSelect) return; shapeToPresetSelect.innerHTML = ''; shapes.forEach((s, i) => { const o = document.createElement('option'); o.value = i; o.textContent = `Forma ${i + 1}`; shapeToPresetSelect.appendChild(o); }); if (shapes.length > 0) shapeToPresetSelect.value = "0"; }
 function initPresetManager() { loadPresetsFromStorage(); populateShapeToPresetSelect(); if (shapePresetButton) shapePresetButton.addEventListener('click', () => {if(shapePresetModal) shapePresetModal.style.display = 'flex'; populateSavedPresetsSelect(); if (savedPresetsSelect.value) presetNameInput.value = savedPresetsSelect.value;}); if (closeShapePresetModalButton) closeShapePresetModalButton.addEventListener('click', () => {if(shapePresetModal) shapePresetModal.style.display = 'none';}); if (saveShapePresetButton) saveShapePresetButton.addEventListener('click', saveShapePreset); if (loadShapePresetButton) loadShapePresetButton.addEventListener('click', loadShapePreset); if (deleteSelectedPresetButton) deleteSelectedPresetButton.addEventListener('click', deleteSelectedPreset); if (exportAllPresetsButton) exportAllPresetsButton.addEventListener('click', exportAllPresets); if (importAllPresetsButton) importAllPresetsButton.addEventListener('click', importAllPresets); if (importPresetFileInput) importPresetFileInput.addEventListener('change', handleImportPresetFile); if (savedPresetsSelect) savedPresetsSelect.addEventListener('change', () => { if (savedPresetsSelect.value) presetNameInput.value = savedPresetsSelect.value; }); }
 
-
-function applyTheme(theme) { /* ... */ } function toggleTheme() { /* ... */ } function loadTheme() { /* ... */ }
 // === THEME MANAGER (Copied from v41, shortened for brevity) ===
 function applyTheme(theme) { document.body.classList.remove('theme-dark','theme-light'); document.body.classList.add(theme); currentTheme = theme; if (themeToggleButton) themeToggleButton.textContent = theme === 'theme-dark' ? '🌙' : '☀️'; }
 function toggleTheme() { if(spectatorModeActive) return; const newTheme = currentTheme === 'theme-dark' ? 'theme-light' : 'theme-dark'; applyTheme(newTheme); localStorage.setItem(THEME_STORAGE_KEY, newTheme); logOSC("SYSTEM","Tema Alterado",[newTheme]); }
 function loadTheme() { const savedTheme = localStorage.getItem(THEME_STORAGE_KEY); applyTheme((savedTheme && (savedTheme==='theme-dark'||savedTheme==='theme-light')) ? savedTheme : 'theme-dark'); }
 
-
-
-function generateMockLandmarks(hand = "Right", shapeCenterX, shapeCenterY) { /* ... */ } function runGestureSimulation() { /* ... */ } function toggleGestureSimulation() { /* ... */ }
 // === GESTURE SIMULATOR (Copied from v41, shortened for brevity) ===
 function generateMockLandmarks(hand="Right",shapeCenterX,shapeCenterY){const landmarks=[];const time=performance.now()/1000;const wristX=(canvasElement.width-shapeCenterX)/canvasElement.width+Math.sin(time*0.5+(hand==="Left"?Math.PI:0))*0.05;const wristY=shapeCenterY/canvasElement.height+Math.cos(time*0.5+(hand==="Left"?Math.PI:0))*0.05;landmarks.push({x:wristX,y:wristY,z:0});const fingerBaseRadius=0.08;const fingerTipRadiusVariance=0.02;const thumbAngle=Math.PI*1.5+Math.sin(time*1.2+(hand==="Left"?0.5:0))*0.3;landmarks[4]={x:wristX+(fingerBaseRadius+Math.cos(time*1.5)*fingerTipRadiusVariance)*Math.cos(thumbAngle),y:wristY+(fingerBaseRadius+Math.cos(time*1.5)*fingerTipRadiusVariance)*Math.sin(thumbAngle)*(canvasElement.width/canvasElement.height),z:0.01};const indexAngle=Math.PI*1.8+Math.cos(time*1.0+(hand==="Left"?0.7:0.2))*0.4;landmarks[8]={x:wristX+(fingerBaseRadius+0.02+Math.sin(time*1.7)*fingerTipRadiusVariance)*Math.cos(indexAngle),y:wristY+(fingerBaseRadius+0.02+Math.sin(time*1.7)*fingerTipRadiusVariance)*Math.sin(indexAngle)*(canvasElement.width/canvasElement.height),z:0.02};landmarks[12]={x:wristX+fingerBaseRadius*0.9,y:wristY-fingerBaseRadius*0.5,z:0.03};landmarks[16]={x:wristX+fingerBaseRadius*0.8,y:wristY-fingerBaseRadius*0.6,z:0.02};landmarks[20]={x:wristX+fingerBaseRadius*0.7,y:wristY-fingerBaseRadius*0.7,z:0.01};for(let i=0;i<21;i++){if(!landmarks[i]){if(i>0&&landmarks[i-1])landmarks[i]={...landmarks[i-1],z:landmarks[i-1].z+0.005};else if(landmarks[0])landmarks[i]={...landmarks[0],z:landmarks[0].z+i*0.005};else landmarks[i]={x:0.5,y:0.5,z:0.05};}} return landmarks;}
 function runGestureSimulation(){if(!gestureSimulationActive)return;const results={multiHandLandmarks:[],multiHandedness:[]};if(operationMode==='one_person'||operationMode==='two_persons'){results.multiHandLandmarks.push(generateMockLandmarks("Right",shapes[0].centerX,shapes[0].centerY));results.multiHandedness.push({score:0.9,index:0,label:"Right"});if(operationMode==='one_person'){results.multiHandLandmarks.push(generateMockLandmarks("Left",shapes[0].centerX-150,shapes[0].centerY));results.multiHandedness.push({score:0.9,index:1,label:"Left"});}else if(operationMode==='two_persons'&&shapes.length>1){results.multiHandLandmarks.push(generateMockLandmarks("Left",shapes[1].centerX,shapes[1].centerY));results.multiHandedness.push({score:0.9,index:1,label:"Left"});}} onResults(results);}
@@ -971,11 +1063,13 @@ function setupEventListeners() {
 
     if (cameraSelectElement) cameraSelectElement.addEventListener('change', (event) => { const newDeviceId = event.target.value; if (newDeviceId === currentCameraDeviceId && mediaStream) return; initializeCamera(newDeviceId || null).then(() => updateHUD()); });
     document.addEventListener('keydown', handleKeyPress);
+    logDebug("Ouvintes de eventos configurados.");
 }
 
 function updateHUD() {
   // Se o elemento HUD não existir, não há nada a fazer.
   if (!hudElement) {
+    logDebug("Elemento HUD não encontrado, não é possível atualizar.");
     return;
   }
 
@@ -1036,8 +1130,7 @@ function updateHUD() {
   // A estrutura atual está correta sem um 'else' solto.
 }
 
-function setScale(newScaleName, updateButtonText = true) { /* ... */ } function cycleScale() { /* ... */ }
-function toggleMidiEnabled() { /* ... */ } function toggleOperationMode() { /* ... */ } function toggleDMXSync() { /* ... */ } function toggleMidiFeedback() { /* ... */ } function toggleOSCRecording() { /* ... */ } function playRecordedOSCLoop() { /* ... */ } function toggleSpectatorMode() { /* ... */ } function openPopup() { /* ... */ }
+// As definições de função que eram apenas comentários foram removidas abaixo.
 // Toggle functions (Copied from v41, shortened for brevity)
 function toggleMidiEnabled(){if(spectatorModeActive)return;midiEnabled=!midiEnabled;midiToggleButton.textContent=midiEnabled?"🎹 MIDI ON":"🎹 MIDI OFF";midiToggleButton.classList.toggle('active',midiEnabled);if(!midiEnabled)turnOffAllActiveNotes();sendOSCMessage('/global/state/midiEnabled',midiEnabled?1:0);updateHUD();saveAllPersistentSettings();}
 function toggleOperationMode(){if(spectatorModeActive)return;operationMode=(operationMode==='one_person')?'two_persons':'one_person';if(operationModeButton)operationModeButton.textContent=`👤 Modo: ${operationMode==='one_person'?'1P':'2P'}`;shapes.forEach(s=>{s.leftHandLandmarks=null;s.rightHandLandmarks=null;s.activeGesture=null;s.lastSentActiveGesture=null;});turnOffAllActiveNotes();updateHUD();saveAllPersistentSettings();}
@@ -1046,8 +1139,9 @@ function toggleMidiFeedback(){if(spectatorModeActive)return;midiFeedbackEnabled=
 function toggleOSCRecording(){if(spectatorModeActive)return;isRecordingOSC=!isRecordingOSC;if(recordOSCButton)recordOSCButton.classList.toggle('active',isRecordingOSC);if(isRecordingOSC){recordedOSCSequence=[];recordingStartTime=performance.now();if(recordOSCButton)recordOSCButton.textContent="🔴 Gravando";if(playOSCLoopButton)playOSCLoopButton.disabled=true;}else{if(recordOSCButton)recordOSCButton.textContent="⏺️ Gravar OSC";if(playOSCLoopButton)playOSCLoopButton.disabled=recordedOSCSequence.length===0;if(recordedOSCSequence.length>0)logOSC("REC INFO",`Gravadas ${recordedOSCSequence.length} msgs. Duração: ${(recordedOSCSequence[recordedOSCSequence.length-1].timestamp/1000).toFixed(2)}s`,[]); } updateHUD();}
 function playRecordedOSCLoop(){if(spectatorModeActive||recordedOSCSequence.length===0||isRecordingOSC)return;isPlayingOSCLoop=!isPlayingOSCLoop;if(playOSCLoopButton)playOSCLoopButton.classList.toggle('active',isPlayingOSCLoop);if(isPlayingOSCLoop){if(playOSCLoopButton)playOSCLoopButton.textContent="⏹️ Parar Loop";if(recordOSCButton)recordOSCButton.disabled=true;oscLoopDuration=parseInt(oscLoopDurationInput.value)||5000;playbackStartTime=performance.now();let currentPlaybackIndex=0;function loopStep(){if(!isPlayingOSCLoop)return;const elapsedTimeInLoop=(performance.now()-playbackStartTime)%oscLoopDuration;if(currentPlaybackIndex>0&&elapsedTimeInLoop<recordedOSCSequence[Math.max(0,currentPlaybackIndex-1)].timestamp)currentPlaybackIndex=0;while(currentPlaybackIndex<recordedOSCSequence.length&&recordedOSCSequence[currentPlaybackIndex].timestamp<=elapsedTimeInLoop){const item=recordedOSCSequence[currentPlaybackIndex];const tempIsRec=isRecordingOSC;isRecordingOSC=false;if(osc&&osc.status()===OSC.STATUS.IS_OPEN)osc.send(new OSC.Message(item.message.address,...item.message.args));isRecordingOSC=tempIsRec;logOSC("LOOP",item.message.address,item.message.args);currentPlaybackIndex++;} if(currentPlaybackIndex>=recordedOSCSequence.length&&recordedOSCSequence.length>0&&oscLoopDuration>recordedOSCSequence[recordedOSCSequence.length-1].timestamp)currentPlaybackIndex=0;playbackLoopIntervalId=requestAnimationFrame(loopStep);} playbackLoopIntervalId=requestAnimationFrame(loopStep);}else{if(playbackLoopIntervalId)cancelAnimationFrame(playbackLoopIntervalId);if(playOSCLoopButton)playOSCLoopButton.textContent="▶️ Loop OSC";if(recordOSCButton)recordOSCButton.disabled=false;} updateHUD();}
 function toggleSpectatorMode(){spectatorModeActive=!spectatorModeActive;spectatorModeButton.textContent=`👓 Espectador ${spectatorModeActive?'ON':'OFF'}`;spectatorModeButton.classList.toggle('active',spectatorModeActive);const controlElements=[midiToggleButton,operationModeButton,syncDMXNotesButton,midiFeedbackToggleButton,recordOSCButton,playOSCLoopButton,gestureSimToggleButton,infoHudButton];if(spectatorModeActive){turnOffAllActiveNotes();if(isRecordingOSC)toggleOSCRecording();if(isPlayingOSCLoop)playRecordedOSCLoop();controlElements.forEach(btn=>{if(btn)btn.disabled=true;});if(arpeggioBPMSlider)arpeggioBPMSlider.disabled=true;if(noteIntervalSlider)noteIntervalSlider.disabled=true;}else{controlElements.forEach(btn=>{if(btn&&btn!==playOSCLoopButton&&btn!==gestureSimToggleButton)btn.disabled=false;});if(playOSCLoopButton)playOSCLoopButton.disabled=recordedOSCSequence.length===0;if(gestureSimToggleButton)gestureSimToggleButton.disabled=false;if(arpeggioBPMSlider&&externalBPM===null)arpeggioBPMSlider.disabled=false;if(noteIntervalSlider&&externalBPM===null)noteIntervalSlider.disabled=false;} updateHUD();}
-function openPopup(){ /* ... */ }
-
+function openPopup(){ /* ... Implementação original omitida ou a ser definida ... */ }
+// As funções setScale e cycleScale não estão definidas no código fornecido,
+// então seus comentários foram removidos para evitar confusão.
 
 function handleKeyPress(e) {
     const activeEl = document.activeElement;
@@ -1062,8 +1156,7 @@ function handleKeyPress(e) {
     if (map[key]) { e.preventDefault(); map[key](); }
 }
 
-function savePersistentSetting(key, value) { /* ... */ } function loadPersistentSetting(key, defaultValue) { /* ... */ } function saveAllPersistentSettings() { /* ... */ } function loadAllPersistentSettings() { /* ... */ }
-function saveArpeggioSettings() { /* ... */ } function loadArpeggioSettings() { /* ... */ } function populateArpeggioStyleSelect() { /* ... */ }
+// As definições de função que eram apenas comentários foram removidas abaixo.
 // Persistent Settings (Copied from v41, shortened for brevity)
 function savePersistentSetting(key,value){try{const s=JSON.parse(localStorage.getItem(APP_SETTINGS_KEY))||{};s[key]=value;localStorage.setItem(APP_SETTINGS_KEY,JSON.stringify(s));}catch(e){}}
 function loadPersistentSetting(key,defaultValue){try{const s=JSON.parse(localStorage.getItem(APP_SETTINGS_KEY))||{};return s[key]!==undefined?s[key]:defaultValue;}catch(e){return defaultValue;}}
@@ -1075,6 +1168,7 @@ function populateArpeggioStyleSelect(){if(!arpeggioStyleSelect)return;arpeggioSt
 
 
 window.addEventListener('DOMContentLoaded', () => {
+    logDebug("DOM Carregado. Iniciando main43.js...");
     console.log("DOM Carregado. Iniciando main43.js (com inicialização simplificada)...");
     detectPlatform();
     hasWebGL2 = checkWebGL2Support();

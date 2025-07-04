@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIDI Shape Manipulator v43</title> <!-- Version Update -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js?v=43"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js?v=43"></script>
   <style>
     html, body { height: 100%; margin: 0; /* overflow: hidden; */ /* Allow body scroll if sidebar content is too tall and sidebar is fixed */ }
     body { background: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; color: #eee; position: relative; }
@@ -138,6 +138,9 @@
       flex-direction: column;
       gap: 10px;
     }
+    .modal-content .button-group.extra-margin-top { /* Nova classe para o margin-top específico */
+      margin-top: 20px;
+    }
     .modal-content .button-group button {
       flex-grow: 1;
       padding: 12px 15px;
@@ -149,6 +152,43 @@
         }
     }
     .modal-content hr { border: 0; height: 1px; background-color: #3e4451; margin: 20px 0; }
+
+    /* Estilos específicos para botões movidos do inline */
+    #saveOscConfigButton.control-button { /* Aplicado a .control-button já existente com ID */
+      background-color: #28a745;
+      color: white;
+    }
+    #sendTestOSCButton.control-button {
+      margin-top: 12px;
+      background-color: #007bff;
+      /* color: white; é herdado de .control-button.active ou .theme-dark .control-button.active se for o caso, ou precisa ser explicitamente definido se não for active */
+    }
+     /* Para botões de log OSC, se não houver outra forma de agrupá-los, usar IDs ou classes específicas */
+    #clearOscLogButton.control-button,
+    #exportOscLogButton.control-button {
+      margin-top: 8px;
+    }
+    #deleteSelectedPresetButton.control-button {
+        background-color: #e06c75;
+        /* color: white;  Pode ser necessário se não for herdado */
+    }
+
+    /* Estilos para elementos que estavam inline */
+    video#video, input#importPresetFileInput {
+      display: none;
+    }
+    label[for="savedPresetsSelect"] {
+      margin-top: 20px;
+    }
+    select#savedPresetsSelect {
+      min-height: 80px;
+    }
+    button#reconnectOSCButton.control-button { /* Estilo mais específico para o botão de reconectar OSC */
+      display: none; /* Será controlado por JS para mostrar */
+      margin-left: 10px;
+      padding: 3px 6px;
+      font-size: 11px;
+    }
 
     /* HUD Styles - v42 Update */
     #hud {
@@ -293,8 +333,8 @@
       <input type="text" id="oscHostInput" placeholder="127.0.0.1">
       <label for="oscPortInput">Porta do Servidor OSC (Ex: 8080):</label>
       <input type="number" id="oscPortInput" placeholder="8080" min="1" max="65535">
-      <div class="button-group" style="margin-top: 20px;">
-        <button id="saveOscConfigButton" class="control-button" style="background-color: #28a745; color: white;">Salvar e Reconectar</button>
+      <div class="button-group extra-margin-top">
+        <button id="saveOscConfigButton" class="control-button">Salvar e Reconectar</button>
         <button id="closeOscConfigModalBtnGeneric" type="button" class="control-button">Fechar</button>
       </div>
       <div class="modal-footer">
@@ -379,20 +419,20 @@
       <input type="text" id="oscAddressInput" placeholder="/exemplo/endereco 123 'texto'">
       <label for="oscArgsInput">Argumentos (JSON Array ou separados por espaço):</label>
       <input type="text" id="oscArgsInput" placeholder='["texto", 123, 0.5]  ou  texto 123 0.5'>
-      <button id="sendTestOSCButton" class="control-button" style="margin-top:12px; background-color: #007bff;">Enviar Mensagem OSC</button>
+      <button id="sendTestOSCButton" class="control-button">Enviar Mensagem OSC</button>
       <hr>
       <label for="oscLoopDurationInput">Duração do Loop OSC Gravado (ms):</label>
       <input type="number" id="oscLoopDurationInput" value="5000" min="100" step="100">
       <hr>
       <label for="oscLogTextarea">Log de Mensagens OSC (Enviadas/Recebidas):</label>
       <textarea id="oscLogTextarea" readonly placeholder="Mensagens OSC do painel, loop e UDP aparecerão aqui..."></textarea>
-      <button id="clearOscLogButton" class="control-button" style="margin-top: 8px;">Limpar Log</button>
-      <button id="exportOscLogButton" class="control-button" style="margin-top: 8px;">Exportar Log</button>
+      <button id="clearOscLogButton" class="control-button">Limpar Log</button>
+      <button id="exportOscLogButton" class="control-button">Exportar Log</button>
       <div class="modal-footer"><p>Use para testar, controlar ou monitorar OSC.</p></div>
     </div>
   </div>
 
-  <video id="video" style="display:none;" playsinline></video>
+  <video id="video"></video>
 
   <!-- Modal de Presets de Formas -->
   <div id="shapePresetModal" class="modal-overlay">
@@ -407,10 +447,10 @@
         <button id="saveShapePresetButton" class="control-button">Salvar Preset da Forma Atual</button>
         <button id="loadShapePresetButton" class="control-button">Carregar Preset na Forma Atual</button>
       </div>
-      <label for="savedPresetsSelect" style="margin-top: 20px;">Presets Salvos:</label>
-      <select id="savedPresetsSelect" size="5" style="min-height: 80px;"></select>
+      <label for="savedPresetsSelect">Presets Salvos:</label>
+      <select id="savedPresetsSelect" size="5"></select>
       <div class="button-group">
-        <button id="deleteSelectedPresetButton" class="control-button" style="background-color: #e06c75;">Deletar Preset Selecionado</button>
+        <button id="deleteSelectedPresetButton" class="control-button">Deletar Preset Selecionado</button>
       </div>
       <hr>
       <h4>Importar / Exportar Todos os Presets</h4>
@@ -418,17 +458,17 @@
         <button id="exportAllPresetsButton" class="control-button">Exportar Todos (JSON)</button>
         <button id="importAllPresetsButton" class="control-button">Importar (JSON)</button>
       </div>
-      <input type="file" id="importPresetFileInput" accept=".json" style="display:none;">
+      <input type="file" id="importPresetFileInput" accept=".json" title="Importar arquivo de presets JSON">
       <div class="modal-footer"><p>Salve e carregue configurações de formas. Presets são salvos localmente.</p></div>
     </div>
   </div>
 
   <!-- <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script> --> <!-- Movido para o HEAD -->
   <!-- <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script> --> <!-- Movido para o HEAD -->
-  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js?v=43"></script>
   <script src="main43.js" defer></script> <!-- ATUALIZADO PARA main43.js -->
   <div id="hud"> <!-- HUD é visível por padrão, JS controlará a classe .hidden -->
-    <button id="reconnectOSCButton" class="control-button" style="display:none; margin-left: 10px; padding: 3px 6px; font-size: 11px;">Reconnect OSC</button>
+    <button id="reconnectOSCButton" class="control-button">Reconnect OSC</button>
   </div>
 
 </body>
