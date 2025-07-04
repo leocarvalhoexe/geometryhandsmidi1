@@ -1,8 +1,8 @@
 // ==========================================================================
-// MIDI SHAPE MANIPULATOR v49 - main49.js
+// MIDI SHAPE MANIPULATOR v51 - main51.js
 // ==========================================================================
 
-// simpleSynth e audioCtx são gerenciados e obtidos de synth49.js
+// simpleSynth e audioCtx são gerenciados e obtidos de synth51.js
 // Não há mais declarações globais de 'let simpleSynth;' ou 'let audioCtx;' aqui.
 
 // === DEBUGGING ===
@@ -113,12 +113,12 @@ let gestureSimIntervalId = null;
 const GESTURE_SIM_INTERVAL = 100;
 
 let currentTheme = 'theme-dark';
-const THEME_STORAGE_KEY = 'midiShapeThemeV35'; // Mantendo v35
-const PRESETS_STORAGE_KEY = 'midiShapePresetsV49'; // ATUALIZADO para v49
+const THEME_STORAGE_KEY = 'midiShapeThemeV35'; // Mantendo v35 por compatibilidade se não houver mudanças de tema
+const PRESETS_STORAGE_KEY = 'midiShapePresetsV51';
 let shapePresets = {};
-const APP_SETTINGS_KEY = 'midiShapeManipulatorV49Settings'; // ATUALIZADO para v49
-const ARPEGGIO_SETTINGS_KEY = 'arpeggioSettingsV49'; // ATUALIZADO para v49
-const CAMERA_DEVICE_ID_KEY = 'midiShapeCameraDeviceIdV49'; // ATUALIZADO para v49
+const APP_SETTINGS_KEY = 'midiShapeManipulatorV51Settings';
+const ARPEGGIO_SETTINGS_KEY = 'arpeggioSettingsV51';
+const CAMERA_DEVICE_ID_KEY = 'midiShapeCameraDeviceIdV51';
 
 // DOM Elements
 const hudElement = document.getElementById('hud');
@@ -198,6 +198,33 @@ const audioReleaseValueSpan = document.getElementById('audioReleaseValue'); // M
 const audioDistortionSlider = document.getElementById('audioDistortionSlider'); // Modal
 const audioDistortionValueSpan = document.getElementById('audioDistortionValue'); // Modal
 
+// --- Elementos DOM para Filtro (v51 / Modal) ---
+const audioFilterCutoffSlider = document.getElementById('audioFilterCutoffSlider'); // Modal
+const audioFilterCutoffValueSpan = document.getElementById('audioFilterCutoffValue'); // Modal
+const audioFilterResonanceSlider = document.getElementById('audioFilterResonanceSlider'); // Modal
+const audioFilterResonanceValueSpan = document.getElementById('audioFilterResonanceValue'); // Modal
+
+// --- Elementos DOM para LFO (v51 / Modal) ---
+const audioLfoWaveformSelect = document.getElementById('audioLfoWaveformSelect');
+const audioLfoRateSlider = document.getElementById('audioLfoRateSlider');
+const audioLfoRateValueSpan = document.getElementById('audioLfoRateValue');
+const audioLfoPitchDepthSlider = document.getElementById('audioLfoPitchDepthSlider');
+const audioLfoPitchDepthValueSpan = document.getElementById('audioLfoPitchDepthValue');
+const audioLfoFilterDepthSlider = document.getElementById('audioLfoFilterDepthSlider');
+const audioLfoFilterDepthValueSpan = document.getElementById('audioLfoFilterDepthValue');
+
+// --- Elementos DOM para Delay (v51 / Modal) ---
+const audioDelayTimeSlider = document.getElementById('audioDelayTimeSlider');
+const audioDelayTimeValueSpan = document.getElementById('audioDelayTimeValue');
+const audioDelayFeedbackSlider = document.getElementById('audioDelayFeedbackSlider');
+const audioDelayFeedbackValueSpan = document.getElementById('audioDelayFeedbackValue');
+const audioDelayMixSlider = document.getElementById('audioDelayMixSlider');
+const audioDelayMixValueSpan = document.getElementById('audioDelayMixValue');
+
+// --- Elementos DOM para Reverb (v51 / Modal) ---
+const audioReverbMixSlider = document.getElementById('audioReverbMixSlider');
+const audioReverbMixValueSpan = document.getElementById('audioReverbMixValue');
+
 // === V48: Synth Control Sidebar Elements ===
 let synthControlsSidebar = document.getElementById('synthControlsSidebar');
 let scWaveformSelect = document.getElementById('scWaveformSelect');
@@ -213,6 +240,29 @@ let scReleaseSlider = document.getElementById('scRelease');
 let scReleaseValue = document.getElementById('scReleaseValue');
 let scDistortionSlider = document.getElementById('scDistortion');
 let scDistortionValue = document.getElementById('scDistortionValue');
+// V51: Synth Control Sidebar Filter Elements
+let scFilterCutoffSlider = document.getElementById('scFilterCutoff');
+let scFilterCutoffValue = document.getElementById('scFilterCutoffValue');
+let scFilterResonanceSlider = document.getElementById('scFilterResonance');
+let scFilterResonanceValue = document.getElementById('scFilterResonanceValue');
+// V51: Synth Control Sidebar LFO Elements
+let scLfoWaveformSelect = document.getElementById('scLfoWaveform');
+let scLfoRateSlider = document.getElementById('scLfoRate');
+let scLfoRateValue = document.getElementById('scLfoRateValue');
+let scLfoPitchDepthSlider = document.getElementById('scLfoPitchDepth');
+let scLfoPitchDepthValue = document.getElementById('scLfoPitchDepthValue');
+let scLfoFilterDepthSlider = document.getElementById('scLfoFilterDepth');
+let scLfoFilterDepthValue = document.getElementById('scLfoFilterDepthValue');
+// V51: Synth Control Sidebar Delay Elements
+let scDelayTimeSlider = document.getElementById('scDelayTime');
+let scDelayTimeValue = document.getElementById('scDelayTimeValue');
+let scDelayFeedbackSlider = document.getElementById('scDelayFeedback');
+let scDelayFeedbackValue = document.getElementById('scDelayFeedbackValue');
+let scDelayMixSlider = document.getElementById('scDelayMix');
+let scDelayMixValue = document.getElementById('scDelayMixValue');
+// V51: Synth Control Sidebar Reverb Elements
+let scReverbMixSlider = document.getElementById('scReverbMix');
+let scReverbMixValue = document.getElementById('scReverbMixValue');
 const toggleSynthPanelButton = document.getElementById('toggleSynthPanelButton'); // V49 Element
 // === END V48/V49 Elements ===
 
@@ -985,6 +1035,24 @@ function setupEventListeners() {
     if (audioReleaseSlider) audioReleaseSlider.addEventListener('input', (e) => handleSynthControlChange('release', parseFloat(e.target.value)));
     if (audioDistortionSlider) audioDistortionSlider.addEventListener('input', (e) => handleSynthControlChange('distortion', parseFloat(e.target.value)));
 
+    // Listeners para Filtro (Modal) - V51
+    if (audioFilterCutoffSlider) audioFilterCutoffSlider.addEventListener('input', (e) => handleSynthControlChange('filterCutoff', parseFloat(e.target.value)));
+    if (audioFilterResonanceSlider) audioFilterResonanceSlider.addEventListener('input', (e) => handleSynthControlChange('filterResonance', parseFloat(e.target.value)));
+
+    // Listeners para LFO (Modal) - V51
+    if (audioLfoWaveformSelect) audioLfoWaveformSelect.addEventListener('change', (e) => handleSynthControlChange('lfoWaveform', e.target.value));
+    if (audioLfoRateSlider) audioLfoRateSlider.addEventListener('input', (e) => handleSynthControlChange('lfoRate', parseFloat(e.target.value)));
+    if (audioLfoPitchDepthSlider) audioLfoPitchDepthSlider.addEventListener('input', (e) => handleSynthControlChange('lfoPitchDepth', parseFloat(e.target.value)));
+    if (audioLfoFilterDepthSlider) audioLfoFilterDepthSlider.addEventListener('input', (e) => handleSynthControlChange('lfoFilterDepth', parseFloat(e.target.value)));
+
+    // Listeners para Delay (Modal) - V51
+    if (audioDelayTimeSlider) audioDelayTimeSlider.addEventListener('input', (e) => handleSynthControlChange('delayTime', parseFloat(e.target.value)));
+    if (audioDelayFeedbackSlider) audioDelayFeedbackSlider.addEventListener('input', (e) => handleSynthControlChange('delayFeedback', parseFloat(e.target.value)));
+    if (audioDelayMixSlider) audioDelayMixSlider.addEventListener('input', (e) => handleSynthControlChange('delayMix', parseFloat(e.target.value)));
+
+    // Listeners para Reverb (Modal) - V51
+    if (audioReverbMixSlider) audioReverbMixSlider.addEventListener('input', (e) => handleSynthControlChange('reverbMix', parseFloat(e.target.value)));
+
     // V48: Listeners para Synth Control Sidebar (serão adicionados após elementos serem criados)
     // Estes serão configurados em initSynthControlsSidebar()
 
@@ -1046,6 +1114,77 @@ function handleSynthControlChange(param, value) {
             if (scDistortionSlider) scDistortionSlider.value = value;   // Sidebar
             if (scDistortionValue) scDistortionValue.textContent = `${value.toFixed(0)}%`; // Sidebar
             break;
+        case 'filterCutoff':
+            synth.setFilterCutoff(value);
+            if (audioFilterCutoffSlider) audioFilterCutoffSlider.value = value; // Modal
+            if (audioFilterCutoffValueSpan) audioFilterCutoffValueSpan.textContent = `${value.toFixed(0)} Hz`; // Modal
+            if (scFilterCutoffSlider) scFilterCutoffSlider.value = value;   // Sidebar
+            if (scFilterCutoffValue) scFilterCutoffValue.textContent = `${value.toFixed(0)} Hz`; // Sidebar
+            break;
+        case 'filterResonance':
+            synth.setFilterResonance(value);
+            if (audioFilterResonanceSlider) audioFilterResonanceSlider.value = value; // Modal
+            if (audioFilterResonanceValueSpan) audioFilterResonanceValueSpan.textContent = value.toFixed(1); // Modal
+            if (scFilterResonanceSlider) scFilterResonanceSlider.value = value;   // Sidebar
+            if (scFilterResonanceValue) scFilterResonanceValue.textContent = value.toFixed(1); // Sidebar
+            break;
+        // LFO V51
+        case 'lfoWaveform':
+            synth.setLfoWaveform(value);
+            if (audioLfoWaveformSelect) audioLfoWaveformSelect.value = value;
+            if (scLfoWaveformSelect) scLfoWaveformSelect.value = value;
+            break;
+        case 'lfoRate':
+            synth.setLfoRate(value);
+            if (audioLfoRateSlider) audioLfoRateSlider.value = value;
+            if (audioLfoRateValueSpan) audioLfoRateValueSpan.textContent = `${value.toFixed(1)} Hz`;
+            if (scLfoRateSlider) scLfoRateSlider.value = value;
+            if (scLfoRateValue) scLfoRateValue.textContent = `${value.toFixed(1)} Hz`;
+            break;
+        case 'lfoPitchDepth':
+            synth.setLfoPitchDepth(value);
+            if (audioLfoPitchDepthSlider) audioLfoPitchDepthSlider.value = value;
+            if (audioLfoPitchDepthValueSpan) audioLfoPitchDepthValueSpan.textContent = `${value.toFixed(1)} Hz`;
+            if (scLfoPitchDepthSlider) scLfoPitchDepthSlider.value = value;
+            if (scLfoPitchDepthValue) scLfoPitchDepthValue.textContent = `${value.toFixed(1)} Hz`;
+            break;
+        case 'lfoFilterDepth':
+            synth.setLfoFilterDepth(value);
+            if (audioLfoFilterDepthSlider) audioLfoFilterDepthSlider.value = value;
+            if (audioLfoFilterDepthValueSpan) audioLfoFilterDepthValueSpan.textContent = `${value.toFixed(0)} Hz`;
+            if (scLfoFilterDepthSlider) scLfoFilterDepthSlider.value = value;
+            if (scLfoFilterDepthValue) scLfoFilterDepthValue.textContent = `${value.toFixed(0)} Hz`;
+            break;
+        // Delay V51
+        case 'delayTime':
+            synth.setDelayTime(value);
+            if (audioDelayTimeSlider) audioDelayTimeSlider.value = value;
+            if (audioDelayTimeValueSpan) audioDelayTimeValueSpan.textContent = `${value.toFixed(2)} s`;
+            if (scDelayTimeSlider) scDelayTimeSlider.value = value;
+            if (scDelayTimeValue) scDelayTimeValue.textContent = `${value.toFixed(2)} s`;
+            break;
+        case 'delayFeedback':
+            synth.setDelayFeedback(value);
+            if (audioDelayFeedbackSlider) audioDelayFeedbackSlider.value = value;
+            if (audioDelayFeedbackValueSpan) audioDelayFeedbackValueSpan.textContent = value.toFixed(2);
+            if (scDelayFeedbackSlider) scDelayFeedbackSlider.value = value;
+            if (scDelayFeedbackValue) scDelayFeedbackValue.textContent = value.toFixed(2);
+            break;
+        case 'delayMix':
+            synth.setDelayMix(value);
+            if (audioDelayMixSlider) audioDelayMixSlider.value = value;
+            if (audioDelayMixValueSpan) audioDelayMixValueSpan.textContent = value.toFixed(2);
+            if (scDelayMixSlider) scDelayMixSlider.value = value;
+            if (scDelayMixValue) scDelayMixValue.textContent = value.toFixed(2);
+            break;
+        // Reverb V51
+        case 'reverbMix':
+            synth.setReverbMix(value);
+            if (audioReverbMixSlider) audioReverbMixSlider.value = value;
+            if (audioReverbMixValueSpan) audioReverbMixValueSpan.textContent = value.toFixed(2);
+            if (scReverbMixSlider) scReverbMixSlider.value = value;
+            if (scReverbMixValue) scReverbMixValue.textContent = value.toFixed(2);
+            break;
     }
     saveAllPersistentSettings();
     updateHUD(); // Waveform é mostrada no HUD
@@ -1069,6 +1208,33 @@ function updateModalSynthControls() {
     if (audioReleaseValueSpan) audioReleaseValueSpan.textContent = `${synth.releaseTime.toFixed(3)}s`;
     if (audioDistortionSlider) audioDistortionSlider.value = synth.distortionAmount;
     if (audioDistortionValueSpan) audioDistortionValueSpan.textContent = `${synth.distortionAmount.toFixed(0)}%`;
+
+    // V51: Filtro
+    if (audioFilterCutoffSlider) audioFilterCutoffSlider.value = synth.filterNode.frequency.value;
+    if (audioFilterCutoffValueSpan) audioFilterCutoffValueSpan.textContent = `${synth.filterNode.frequency.value.toFixed(0)} Hz`;
+    if (audioFilterResonanceSlider) audioFilterResonanceSlider.value = synth.filterNode.Q.value;
+    if (audioFilterResonanceValueSpan) audioFilterResonanceValueSpan.textContent = synth.filterNode.Q.value.toFixed(1);
+
+    // V51: LFO
+    if (audioLfoWaveformSelect) audioLfoWaveformSelect.value = synth.lfo.type;
+    if (audioLfoRateSlider) audioLfoRateSlider.value = synth.lfo.frequency.value;
+    if (audioLfoRateValueSpan) audioLfoRateValueSpan.textContent = `${synth.lfo.frequency.value.toFixed(1)} Hz`;
+    if (audioLfoPitchDepthSlider) audioLfoPitchDepthSlider.value = synth.lfoGainPitch.gain.value;
+    if (audioLfoPitchDepthValueSpan) audioLfoPitchDepthValueSpan.textContent = `${synth.lfoGainPitch.gain.value.toFixed(1)} Hz`;
+    if (audioLfoFilterDepthSlider) audioLfoFilterDepthSlider.value = synth.lfoGainFilter.gain.value;
+    if (audioLfoFilterDepthValueSpan) audioLfoFilterDepthValueSpan.textContent = `${synth.lfoGainFilter.gain.value.toFixed(0)} Hz`;
+
+    // V51: Delay
+    if (audioDelayTimeSlider) audioDelayTimeSlider.value = synth.delayNode.delayTime.value;
+    if (audioDelayTimeValueSpan) audioDelayTimeValueSpan.textContent = `${synth.delayNode.delayTime.value.toFixed(2)} s`;
+    if (audioDelayFeedbackSlider) audioDelayFeedbackSlider.value = synth.delayFeedbackGain.gain.value;
+    if (audioDelayFeedbackValueSpan) audioDelayFeedbackValueSpan.textContent = synth.delayFeedbackGain.gain.value.toFixed(2);
+    if (audioDelayMixSlider) audioDelayMixSlider.value = Math.acos(synth.delayDryGain.gain.value) / (0.5 * Math.PI); // Inverse of equal power
+    if (audioDelayMixValueSpan) audioDelayMixValueSpan.textContent = (Math.acos(synth.delayDryGain.gain.value) / (0.5 * Math.PI)).toFixed(2);
+
+    // V51: Reverb
+    if (audioReverbMixSlider && synth.reverbDryGain) audioReverbMixSlider.value = Math.acos(synth.reverbDryGain.gain.value) / (0.5 * Math.PI);
+    if (audioReverbMixValueSpan && synth.reverbDryGain) audioReverbMixValueSpan.textContent = (Math.acos(synth.reverbDryGain.gain.value) / (0.5 * Math.PI)).toFixed(2);
 }
 
 // V48: Update Sidebar Synth Controls from Modal or Synth state
@@ -1089,6 +1255,33 @@ function updateSidebarSynthControls() {
     if (scReleaseValue) scReleaseValue.textContent = `${synth.releaseTime.toFixed(3)}s`;
     if (scDistortionSlider) scDistortionSlider.value = synth.distortionAmount;
     if (scDistortionValue) scDistortionValue.textContent = `${synth.distortionAmount.toFixed(0)}%`;
+
+    // V51: Filtro
+    if (scFilterCutoffSlider) scFilterCutoffSlider.value = synth.filterNode.frequency.value;
+    if (scFilterCutoffValue) scFilterCutoffValue.textContent = `${synth.filterNode.frequency.value.toFixed(0)} Hz`;
+    if (scFilterResonanceSlider) scFilterResonanceSlider.value = synth.filterNode.Q.value;
+    if (scFilterResonanceValue) scFilterResonanceValue.textContent = synth.filterNode.Q.value.toFixed(1);
+
+    // V51: LFO
+    if (scLfoWaveformSelect) scLfoWaveformSelect.value = synth.lfo.type;
+    if (scLfoRateSlider) scLfoRateSlider.value = synth.lfo.frequency.value;
+    if (scLfoRateValue) scLfoRateValue.textContent = `${synth.lfo.frequency.value.toFixed(1)} Hz`;
+    if (scLfoPitchDepthSlider) scLfoPitchDepthSlider.value = synth.lfoGainPitch.gain.value;
+    if (scLfoPitchDepthValue) scLfoPitchDepthValue.textContent = `${synth.lfoGainPitch.gain.value.toFixed(1)} Hz`;
+    if (scLfoFilterDepthSlider) scLfoFilterDepthSlider.value = synth.lfoGainFilter.gain.value;
+    if (scLfoFilterDepthValue) scLfoFilterDepthValue.textContent = `${synth.lfoGainFilter.gain.value.toFixed(0)} Hz`;
+
+    // V51: Delay
+    if (scDelayTimeSlider) scDelayTimeSlider.value = synth.delayNode.delayTime.value;
+    if (scDelayTimeValue) scDelayTimeValue.textContent = `${synth.delayNode.delayTime.value.toFixed(2)} s`;
+    if (scDelayFeedbackSlider) scDelayFeedbackSlider.value = synth.delayFeedbackGain.gain.value;
+    if (scDelayFeedbackValue) scDelayFeedbackValue.textContent = synth.delayFeedbackGain.gain.value.toFixed(2);
+    if (scDelayMixSlider) scDelayMixSlider.value = Math.acos(synth.delayDryGain.gain.value) / (0.5 * Math.PI); // Inverse of equal power
+    if (scDelayMixValue) scDelayMixValue.textContent = (Math.acos(synth.delayDryGain.gain.value) / (0.5 * Math.PI)).toFixed(2);
+
+    // V51: Reverb
+    if (scReverbMixSlider && synth.reverbDryGain) scReverbMixSlider.value = Math.acos(synth.reverbDryGain.gain.value) / (0.5 * Math.PI);
+    if (scReverbMixValue && synth.reverbDryGain) scReverbMixValue.textContent = (Math.acos(synth.reverbDryGain.gain.value) / (0.5 * Math.PI)).toFixed(2);
 }
 
 // V48: Initialize Synth Control Sidebar
@@ -1112,6 +1305,12 @@ function initSynthControlsSidebar() {
     scReleaseValue = document.getElementById('scReleaseValue');
     scDistortionSlider = document.getElementById('scDistortion');
     scDistortionValue = document.getElementById('scDistortionValue');
+    // V51: Filtro (já definidos no escopo global do main49.js)
+    // scFilterCutoffSlider = document.getElementById('scFilterCutoff');
+    // scFilterCutoffValue = document.getElementById('scFilterCutoffValue');
+    // scFilterResonanceSlider = document.getElementById('scFilterResonance');
+    // scFilterResonanceValue = document.getElementById('scFilterResonanceValue');
+
 
     if (scWaveformSelect) scWaveformSelect.addEventListener('change', (e) => handleSynthControlChange('waveform', e.target.value));
     if (scMasterVolumeSlider) scMasterVolumeSlider.addEventListener('input', (e) => handleSynthControlChange('masterVolume', parseFloat(e.target.value)));
@@ -1120,6 +1319,24 @@ function initSynthControlsSidebar() {
     if (scSustainSlider) scSustainSlider.addEventListener('input', (e) => handleSynthControlChange('sustain', parseFloat(e.target.value)));
     if (scReleaseSlider) scReleaseSlider.addEventListener('input', (e) => handleSynthControlChange('release', parseFloat(e.target.value)));
     if (scDistortionSlider) scDistortionSlider.addEventListener('input', (e) => handleSynthControlChange('distortion', parseFloat(e.target.value)));
+
+    // V51: Listeners para Filtro (Sidebar)
+    if (scFilterCutoffSlider) scFilterCutoffSlider.addEventListener('input', (e) => handleSynthControlChange('filterCutoff', parseFloat(e.target.value)));
+    if (scFilterResonanceSlider) scFilterResonanceSlider.addEventListener('input', (e) => handleSynthControlChange('filterResonance', parseFloat(e.target.value)));
+
+    // V51: Listeners para LFO (Sidebar)
+    if (scLfoWaveformSelect) scLfoWaveformSelect.addEventListener('change', (e) => handleSynthControlChange('lfoWaveform', e.target.value));
+    if (scLfoRateSlider) scLfoRateSlider.addEventListener('input', (e) => handleSynthControlChange('lfoRate', parseFloat(e.target.value)));
+    if (scLfoPitchDepthSlider) scLfoPitchDepthSlider.addEventListener('input', (e) => handleSynthControlChange('lfoPitchDepth', parseFloat(e.target.value)));
+    if (scLfoFilterDepthSlider) scLfoFilterDepthSlider.addEventListener('input', (e) => handleSynthControlChange('lfoFilterDepth', parseFloat(e.target.value)));
+
+    // V51: Listeners para Delay (Sidebar)
+    if (scDelayTimeSlider) scDelayTimeSlider.addEventListener('input', (e) => handleSynthControlChange('delayTime', parseFloat(e.target.value)));
+    if (scDelayFeedbackSlider) scDelayFeedbackSlider.addEventListener('input', (e) => handleSynthControlChange('delayFeedback', parseFloat(e.target.value)));
+    if (scDelayMixSlider) scDelayMixSlider.addEventListener('input', (e) => handleSynthControlChange('delayMix', parseFloat(e.target.value)));
+
+    // V51: Listener para Reverb (Sidebar)
+    if (scReverbMixSlider) scReverbMixSlider.addEventListener('input', (e) => handleSynthControlChange('reverbMix', parseFloat(e.target.value)));
 
     // V49: Logic for toggleSynthPanelButton (button is now created in HTML)
     if (toggleSynthPanelButton && synthControlsSidebar) {
@@ -1258,6 +1475,28 @@ function saveAllPersistentSettings(){
     savePersistentSetting('audioSustain', currentSimpleSynth.sustainLevel);
     savePersistentSetting('audioRelease', currentSimpleSynth.releaseTime);
     savePersistentSetting('audioDistortion', currentSimpleSynth.distortionAmount);
+    // V51: Filtro
+    if (currentSimpleSynth.filterNode) {
+      savePersistentSetting('audioFilterCutoff', currentSimpleSynth.filterNode.frequency.value);
+      savePersistentSetting('audioFilterResonance', currentSimpleSynth.filterNode.Q.value);
+    }
+    // V51: LFO
+    if (currentSimpleSynth.lfo) {
+      savePersistentSetting('lfoWaveform', currentSimpleSynth.lfo.type);
+      savePersistentSetting('lfoRate', currentSimpleSynth.lfo.frequency.value);
+      savePersistentSetting('lfoPitchDepth', currentSimpleSynth.lfoGainPitch.gain.value);
+      savePersistentSetting('lfoFilterDepth', currentSimpleSynth.lfoGainFilter.gain.value);
+    }
+    // V51: Delay
+    if (currentSimpleSynth.delayNode) {
+      savePersistentSetting('delayTime', currentSimpleSynth.delayNode.delayTime.value);
+      savePersistentSetting('delayFeedback', currentSimpleSynth.delayFeedbackGain.gain.value);
+      savePersistentSetting('delayMix', Math.acos(currentSimpleSynth.delayDryGain.gain.value) / (0.5 * Math.PI)); // Salva o valor do slider (0-1)
+    }
+    // V51: Reverb
+    if (currentSimpleSynth.reverbDryGain) { // Checa se o reverbDryGain existe, indicando que o reverb foi inicializado
+      savePersistentSetting('reverbMix', Math.acos(currentSimpleSynth.reverbDryGain.gain.value) / (0.5 * Math.PI));
+    }
   }
   savePersistentSetting('dmxSyncModeActive',dmxSyncModeActive);
   savePersistentSetting('midiFeedbackEnabled',midiFeedbackEnabled);
@@ -1267,7 +1506,7 @@ function saveAllPersistentSettings(){
   savePersistentSetting('midiOutputId', midiOutput ? midiOutput.id : null);
   savePersistentSetting('midiInputId', midiInput ? midiInput.id : null);
   // savePersistentSetting('synthPanelHidden', synthControlsSidebar ? synthControlsSidebar.style.display === 'none' : false); // Salvo no listener do botão
-  console.log("Configs V49 salvas no localStorage."); // V49 update
+  console.log("Configs V51 salvas no localStorage."); // V51 update
 }
 
 function loadAllPersistentSettings(){
@@ -1281,6 +1520,20 @@ function loadAllPersistentSettings(){
   const savedSustain = loadPersistentSetting('audioSustain', 0.7);
   const savedRelease = loadPersistentSetting('audioRelease', 0.2);
   const savedDistortion = loadPersistentSetting('audioDistortion', 0);
+    // V51: Filtro
+    const savedFilterCutoff = loadPersistentSetting('audioFilterCutoff', 20000);
+    const savedFilterResonance = loadPersistentSetting('audioFilterResonance', 1);
+    // V51: LFO
+    const savedLfoWaveform = loadPersistentSetting('lfoWaveform', 'sine');
+    const savedLfoRate = loadPersistentSetting('lfoRate', 5);
+    const savedLfoPitchDepth = loadPersistentSetting('lfoPitchDepth', 0);
+    const savedLfoFilterDepth = loadPersistentSetting('lfoFilterDepth', 0);
+    // V51: Delay
+    const savedDelayTime = loadPersistentSetting('delayTime', 0.5);
+    const savedDelayFeedback = loadPersistentSetting('delayFeedback', 0.3);
+    const savedDelayMix = loadPersistentSetting('delayMix', 0);
+    // V51: Reverb
+    const savedReverbMix = loadPersistentSetting('reverbMix', 0);
 
   dmxSyncModeActive = loadPersistentSetting('dmxSyncModeActive',false);
   midiFeedbackEnabled = loadPersistentSetting('midiFeedbackEnabled',false);
@@ -1305,7 +1558,7 @@ function loadAllPersistentSettings(){
   loadArpeggioSettings();
   // const isSynthPanelHidden = loadPersistentSetting('synthPanelHidden', false); // Carregado em initSynthControlsSidebar
 
-  console.log("Configs V49 carregadas do localStorage."); // V49 update
+  console.log("Configs V51 carregadas do localStorage."); // V51 update
   return {
     savedMidiOutputId: loadPersistentSetting('midiOutputId',null),
     savedMidiInputId: loadPersistentSetting('midiInputId',null),
@@ -1317,7 +1570,21 @@ function loadAllPersistentSettings(){
         decay: savedDecay,
         sustain: savedSustain,
         release: savedRelease,
-        distortion: savedDistortion
+        distortion: savedDistortion,
+        // V51: Filtro
+        filterCutoff: savedFilterCutoff,
+        filterResonance: savedFilterResonance,
+        // V51: LFO
+        lfoWaveform: savedLfoWaveform,
+        lfoRate: savedLfoRate,
+        lfoPitchDepth: savedLfoPitchDepth,
+        lfoFilterDepth: savedLfoFilterDepth,
+        // V51: Delay
+        delayTime: savedDelayTime,
+        delayFeedback: savedDelayFeedback,
+        delayMix: savedDelayMix,
+        // V51: Reverb
+        reverbMix: savedReverbMix
     }
   };
 }
@@ -1359,9 +1626,23 @@ window.addEventListener('DOMContentLoaded', () => {
                     synthAfterGesture.setWaveform(audioSettings.waveform);
                     synthAfterGesture.setAttack(audioSettings.attack);
                     synthAfterGesture.setDecay(audioSettings.decay);
-                    synthAfterGesture.setSustain(audioSettings.sustain);
-                    synthAfterGesture.setRelease(audioSettings.release);
-                    synthAfterGesture.setDistortion(audioSettings.distortion);
+                    synthAfterGesture.setSustain(audioSettings.sustain); // Corrected: using audioSettings property names
+                    synthAfterGesture.setRelease(audioSettings.release); // Corrected: using audioSettings property names
+                    synthAfterGesture.setDistortion(audioSettings.distortion); // Corrected: using audioSettings property names
+                    // V51: Aplicar Filtro
+                    synthAfterGesture.setFilterCutoff(audioSettings.filterCutoff);
+                    synthAfterGesture.setFilterResonance(audioSettings.filterResonance);
+                    // V51: Aplicar LFO
+                    synthAfterGesture.setLfoWaveform(audioSettings.lfoWaveform);
+                    synthAfterGesture.setLfoRate(audioSettings.lfoRate);
+                    synthAfterGesture.setLfoPitchDepth(audioSettings.lfoPitchDepth);
+                    synthAfterGesture.setLfoFilterDepth(audioSettings.lfoFilterDepth);
+                    // V51: Aplicar Delay
+                    synthAfterGesture.setDelayTime(audioSettings.delayTime);
+                    synthAfterGesture.setDelayFeedback(audioSettings.delayFeedback);
+                    synthAfterGesture.setDelayMix(audioSettings.delayMix);
+                    // V51: Aplicar Reverb
+                    synthAfterGesture.setReverbMix(audioSettings.reverbMix);
 
                     // Atualizar UI do Modal e da Sidebar
                     updateModalSynthControls();
@@ -1393,12 +1674,27 @@ window.addEventListener('DOMContentLoaded', () => {
         currentSynth.setWaveform(audioSettings.waveform);
         currentSynth.setAttack(audioSettings.attack);
         currentSynth.setDecay(audioSettings.decay);
-        currentSynth.setSustain(audioSettings.sustain);
-        currentSynth.setRelease(audioSettings.release);
-        currentSynth.setDistortion(audioSettings.distortion);
+        currentSynth.setSustain(audioSettings.sustain); // Corrected: using audioSettings property names
+        currentSynth.setRelease(audioSettings.release); // Corrected: using audioSettings property names
+        currentSynth.setDistortion(audioSettings.distortion); // Corrected: using audioSettings property names
+        // V51: Aplicar Filtro
+        currentSynth.setFilterCutoff(audioSettings.filterCutoff);
+        currentSynth.setFilterResonance(audioSettings.filterResonance);
+        // V51: Aplicar LFO
+        currentSynth.setLfoWaveform(audioSettings.lfoWaveform);
+        currentSynth.setLfoRate(audioSettings.lfoRate);
+        currentSynth.setLfoPitchDepth(audioSettings.lfoPitchDepth);
+        currentSynth.setLfoFilterDepth(audioSettings.lfoFilterDepth);
+        // V51: Aplicar Delay
+        currentSynth.setDelayTime(audioSettings.delayTime);
+        currentSynth.setDelayFeedback(audioSettings.delayFeedback);
+        currentSynth.setDelayMix(audioSettings.delayMix);
+        // V51: Aplicar Reverb
+        currentSynth.setReverbMix(audioSettings.reverbMix);
+
         updateModalSynthControls();
         updateSidebarSynthControls();
-        console.log("AudioContext já estava rodando, configurações do synth aplicadas.");
+        console.log("AudioContext já estava rodando, configurações do synth (incluindo filtro, LFO, Delay e Reverb) aplicadas.");
         // Removemos os listeners de gesto se o áudio já está OK.
         document.removeEventListener('click', firstGestureHandler);
         document.removeEventListener('keydown', firstGestureHandler);
@@ -1439,9 +1735,9 @@ window.addEventListener('DOMContentLoaded', () => {
     updateHUD();
     sendAllGlobalStatesOSC();
 
-    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v49).\n`; // V49 update
+  if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v51).\n`; // V51 update
 
-    console.log("Iniciando loop de animação (v49) e finalizando DOMContentLoaded."); // V49 update
+  console.log("Iniciando loop de animação (v51) e finalizando DOMContentLoaded."); // V51 update
     animationLoop();
 });
 
