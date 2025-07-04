@@ -1,5 +1,5 @@
 // ==========================================================================
-// MIDI SHAPE MANIPULATOR v44 - main44.js
+// MIDI SHAPE MANIPULATOR v47 - main47.js
 // ==========================================================================
 
 // === DEBUGGING ===
@@ -79,6 +79,12 @@ let externalBPM = null;
 
 let osc;
 let oscStatus = "OSC Desconectado";
+
+// Variáveis para o AudioContext e SimpleSynth de synth47.js
+let audioCtx = null;
+let simpleSynth = null;
+// internalAudioEnabled já é declarada e gerenciada mais abaixo.
+
 let OSC_HOST = localStorage.getItem('OSC_HOST') || location.hostname || "127.0.0.1";
 let OSC_PORT = parseInt(localStorage.getItem('OSC_PORT'), 10) || 8080;
 const OSC_SETTINGS_KEY = 'oscConnectionSettingsV35'; // Mantendo v35 por enquanto para retrocompatibilidade de settings
@@ -107,11 +113,11 @@ const GESTURE_SIM_INTERVAL = 100;
 
 let currentTheme = 'theme-dark';
 const THEME_STORAGE_KEY = 'midiShapeThemeV35'; // Mantendo v35
-const PRESETS_STORAGE_KEY = 'midiShapePresetsV35'; // Mantendo v35
+const PRESETS_STORAGE_KEY = 'midiShapePresetsV47'; // ATUALIZADO para v47
 let shapePresets = {};
-const APP_SETTINGS_KEY = 'midiShapeManipulatorV44Settings'; // ATUALIZADO para v44
-const ARPEGGIO_SETTINGS_KEY = 'arpeggioSettingsV44'; // ATUALIZADO para v44
-const CAMERA_DEVICE_ID_KEY = 'midiShapeCameraDeviceIdV36'; // Mantendo v36
+const APP_SETTINGS_KEY = 'midiShapeManipulatorV47Settings'; // ATUALIZADO para v47
+const ARPEGGIO_SETTINGS_KEY = 'arpeggioSettingsV47'; // ATUALIZADO para v47
+const CAMERA_DEVICE_ID_KEY = 'midiShapeCameraDeviceIdV47'; // ATUALIZADO para v47
 
 // DOM Elements
 const hudElement = document.getElementById('hud');
@@ -785,13 +791,115 @@ function populateMidiInputSelect() { if(!midiInputSelect) return; const prevId =
 function setMidiInput(inputPort) { if (midiInput) midiInput.onmidimessage = null; midiInput = inputPort; if (midiInput) { midiInput.onmidimessage = handleMidiMessage; console.log("MIDI Input:", midiInput.name); } }
 async function initMidi() { try { if (navigator.requestMIDIAccess) { midiAccess = await navigator.requestMIDIAccess({ sysex: false }); console.log("MIDI Access Granted"); updateMidiDeviceLists(); midiAccess.onstatechange = (e) => { console.log("MIDI state change:", e.port.name, e.port.type, e.port.state); updateMidiDeviceLists(); }; } else console.warn("Web MIDI API não suportada."); } catch (error) { console.error("Não foi possível acessar MIDI.", error); } }
 function handleMidiMessage(event) { if (!midiFeedbackEnabled || spectatorModeActive) return; const cmd = event.data[0] >> 4; const ch = event.data[0] & 0x0F; const data1 = event.data[1]; const data2 = event.data.length > 2 ? event.data[2] : 0; let oscAddr = null, oscArgs = [ch, data1]; if (cmd === 9 && data2 > 0) { oscAddr = '/midi/in/noteOn'; oscArgs.push(data2); } else if (cmd === 8 || (cmd === 9 && data2 === 0)) { oscAddr = '/midi/in/noteOff'; } else if (cmd === 11) { oscAddr = '/midi/in/cc'; oscArgs.push(data2); } else if (cmd === 14) { oscAddr = '/midi/in/pitchbend'; oscArgs = [ch, (data2 << 7) | data1]; } if (oscAddr) { sendOSCMessage(oscAddr, ...oscArgs); logOSC("MIDI->OSC", oscAddr, oscArgs); if (dmxSyncModeActive && (oscAddr === '/midi/in/noteOn' || oscAddr === '/midi/in/noteOff')) { sendOSCMessage('/dmx/note', data1, oscAddr === '/midi/in/noteOn' ? data2 : 0); logOSC("DMX Sync", '/dmx/note', [data1, oscAddr === '/midi/in/noteOn' ? data2 : 0]); } } }
-function sendMidiNoteOn(note, velocity, channel, shapeId = -1) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0, Math.min(15, channel)); const n = Math.max(0, Math.min(127, Math.round(note))); const v = Math.max(0, Math.min(127, Math.round(velocity))); midiOutput.send([0x90 + ch, n, v]); sendOSCMessage(`/forma/${shapeId}/noteOn`, n, v, ch); if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, v); }
-function sendMidiNoteOff(note, channel, shapeId = -1) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0, Math.min(15, channel)); const n = Math.max(0, Math.min(127, Math.round(note))); midiOutput.send([0x80 + ch, n, 0]); sendOSCMessage(`/forma/${shapeId}/noteOff`, n, ch); if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, 0); }
+function sendMidiNoteOn(note, velocity, channel, shapeId = -1) {
+  if (spectatorModeActive) return;
+  const ch = Math.max(0, Math.min(15, channel));
+  const n = Math.max(0, Math.min(127, Math.round(note)));
+  const v = Math.max(0, Math.min(127, Math.round(velocity)));
+
+  if (midiEnabled && midiOutput) {
+    midiOutput.send([0x90 + ch, n, v]);
+  }
+  // Internal Synth Call
+  if (internalAudioEnabled && simpleSynth && typeof simpleSynth.noteOn === 'function') {
+    simpleSynth.noteOn(n, v);
+  }
+  sendOSCMessage(`/forma/${shapeId}/noteOn`, n, v, ch);
+  if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, v);
+}
+
+function sendMidiNoteOff(note, channel, shapeId = -1) {
+  if (spectatorModeActive) return;
+  const ch = Math.max(0, Math.min(15, channel));
+  const n = Math.max(0, Math.min(127, Math.round(note)));
+
+  if (midiEnabled && midiOutput) {
+    midiOutput.send([0x80 + ch, n, 0]);
+  }
+  // Internal Synth Call
+  if (internalAudioEnabled && simpleSynth && typeof simpleSynth.noteOff === 'function') {
+    simpleSynth.noteOff(n);
+  }
+  sendOSCMessage(`/forma/${shapeId}/noteOff`, n, ch);
+  if (dmxSyncModeActive) sendOSCMessage(`/dmx/note`, n, 0);
+}
+
 function sendPitchBend(bendValue, channel) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0,Math.min(15,channel)); const bend = Math.max(0,Math.min(16383,Math.round(bendValue))); midiOutput.send([0xE0+ch, bend & 0x7F, (bend>>7)&0x7F]); }
 function sendMidiCC(cc, value, channel) { if (spectatorModeActive || !midiEnabled || !midiOutput) return; const ch = Math.max(0,Math.min(15,channel)); const c = Math.max(0,Math.min(119,Math.round(cc))); const v = Math.max(0,Math.min(127,Math.round(value))); midiOutput.send([0xB0+ch, c, v]); }
-function turnOffAllActiveNotesForShape(shape) { if (spectatorModeActive) return; const origMidiEnabled = midiEnabled; midiEnabled = true; logDebug(`Desligando todas as notas ativas para a forma ${shape.id}`); Object.values(shape.activeMidiNotes).forEach(noteInfo => { if (noteInfo.playing) { sendMidiNoteOff(noteInfo.note, shape.midiChannel, shape.id + 1); } if (noteInfo.staccatoTimer) { clearTimeout(noteInfo.staccatoTimer); } }); shape.activeMidiNotes = {}; midiEnabled = origMidiEnabled; }
-function turnOffAllActiveNotes() { if (spectatorModeActive) return; logDebug("Desligando todas as notas ativas para todas as formas."); const origMidiEnabled = midiEnabled; midiEnabled = true; shapes.forEach(shape => turnOffAllActiveNotesForShape(shape)); midiEnabled = origMidiEnabled; }
-function resetMidiSystem() { if (spectatorModeActive) return; console.log("MIDI Reset."); logDebug("Sistema MIDI Resetado."); turnOffAllActiveNotes(); const origMidiEnabled = midiEnabled; midiEnabled = true; if (midiOutput) { for (let ch = 0; ch < 16; ch++) { midiOutput.send([0xB0 + ch, 120, 0]); midiOutput.send([0xB0 + ch, 121, 0]); } } midiEnabled = origMidiEnabled; shapes.forEach(s => { s.currentPitchBend = 8192; s.reverbAmount = 0; s.delayAmount = 0; s.panValue = 64; s.brightnessValue = 64; s.modWheelValue = 0; s.resonanceValue = 0; s.lastSentReverb = -1; s.lastSentDelay = -1; s.lastSentPan = -1; s.lastSentBrightness = -1; s.lastSentModWheel = -1; s.lastSentResonance = -1; }); updateHUD(); sendAllGlobalStatesOSC(); displayGlobalError("Sistema MIDI Resetado.", 3000); logOSC("SYSTEM", "MIDI Reset", []); }
+
+function turnOffAllActiveNotesForShape(shape) {
+  if (spectatorModeActive) return;
+  const origMidiEnabled = midiEnabled; // Salva o estado original
+  const localMidiEnabled = true; // Habilita temporariamente para garantir que sendMidiNoteOff funcione para MIDI externo
+  midiEnabled = localMidiEnabled;
+
+  logDebug(`Desligando todas as notas ativas para a forma ${shape.id}`);
+  Object.values(shape.activeMidiNotes).forEach(noteInfo => {
+    if (noteInfo.playing) {
+      // Envia Note OFF para MIDI externo (se habilitado e houver output)
+      sendMidiNoteOff(noteInfo.note, shape.midiChannel, shape.id + 1);
+    }
+    if (noteInfo.staccatoTimer) {
+      clearTimeout(noteInfo.staccatoTimer);
+    }
+  });
+  shape.activeMidiNotes = {};
+  midiEnabled = origMidiEnabled; // Restaura o estado original do MIDI enable
+
+  // Para o synth interno, não precisamos iterar, apenas chamar allNotesOff se ele estiver ativo para esta forma
+  // No entanto, simpleSynth é global. Se uma forma é desligada, idealmente só as suas notas no synth param.
+  // A lógica atual de simpleSynth.noteOff(midiNote) já lida com notas individuais.
+  // E sendMidiNoteOff agora chama simpleSynth.noteOff.
+  // Se a intenção é um "panic" para a forma, e o synth interno não tem essa granularidade,
+  // então allNotesOff no synth global pode ser excessivo se outras formas estiverem tocando.
+  // Por enquanto, a chamada individual em sendMidiNoteOff é suficiente.
+  // Se quisermos um "all notes off" específico para o synth interno, precisaria ser uma chamada separada.
+}
+
+function turnOffAllActiveNotes() {
+  if (spectatorModeActive) return;
+  logDebug("Desligando todas as notas ativas para todas as formas (MIDI e Interno).");
+  const origMidiEnabled = midiEnabled;
+  midiEnabled = true; // Temporariamente habilita para garantir que as chamadas MIDI funcionem
+
+  shapes.forEach(shape => turnOffAllActiveNotesForShape(shape)); // Isso já chamará sendMidiNoteOff, que lida com o synth interno
+
+  midiEnabled = origMidiEnabled; // Restaura o estado
+
+  // Adicionalmente, uma chamada explícita para allNotesOff no synth interno para garantir.
+  if (simpleSynth && typeof simpleSynth.allNotesOff === 'function') {
+    simpleSynth.allNotesOff();
+  }
+}
+
+function resetMidiSystem() {
+  if (spectatorModeActive) return;
+  console.log("MIDI Reset.");
+  logDebug("Sistema MIDI Resetado.");
+  turnOffAllActiveNotes(); // Isso já deve cuidar do synth interno também
+
+  const origMidiEnabled = midiEnabled;
+  midiEnabled = true; // Habilita temporariamente para os CCs de reset
+  if (midiOutput) {
+    for (let ch = 0; ch < 16; ch++) {
+      midiOutput.send([0xB0 + ch, 120, 0]); // All Sound Off
+      midiOutput.send([0xB0 + ch, 121, 0]); // Reset All Controllers
+    }
+  }
+  midiEnabled = origMidiEnabled; // Restaura
+
+  shapes.forEach(s => {
+    s.currentPitchBend = 8192;
+    s.reverbAmount = 0; s.delayAmount = 0; s.panValue = 64;
+    s.brightnessValue = 64; s.modWheelValue = 0; s.resonanceValue = 0;
+    s.lastSentReverb = -1; s.lastSentDelay = -1; s.lastSentPan = -1;
+    s.lastSentBrightness = -1; s.lastSentModWheel = -1; s.lastSentResonance = -1;
+  });
+  updateHUD();
+  sendAllGlobalStatesOSC();
+  displayGlobalError("Sistema MIDI Resetado.", 3000);
+  logOSC("SYSTEM", "MIDI Reset", []);
+}
 
 // === OSC MANAGER ===
 function loadOscSettings() { const stored = localStorage.getItem(OSC_SETTINGS_KEY); let loadedHost = location.hostname; let loadedPort = 8080; if (stored) { try { const s = JSON.parse(stored); if (s.host) loadedHost = s.host; if (s.port) loadedPort = parseInt(s.port,10); } catch(e){ loadedHost = location.hostname || "127.0.0.1"; loadedPort = 8080; }} else { loadedHost = location.hostname || "127.0.0.1"; loadedPort = 8080; } OSC_HOST = loadedHost || "127.0.0.1"; OSC_PORT = loadedPort || 8080; if (oscHostInput) oscHostInput.value = OSC_HOST; if (oscPortInput) oscPortInput.value = OSC_PORT; console.log(`OSC Config: ${OSC_HOST}:${OSC_PORT}`); }
@@ -992,8 +1100,8 @@ function saveAllPersistentSettings(){
   savePersistentSetting('midiOutputId', midiOutput ? midiOutput.id : null);
   savePersistentSetting('midiInputId', midiInput ? midiInput.id : null);
   // Não salvar cameraError, gestureSimulationActive, isRecordingOSC, isPlayingOSCLoop - são estados de tempo de execução
-  console.log("Configs V45 salvas no localStorage.");
-} 
+  console.log("Configs V47 salvas no localStorage.");
+}
 
 function loadAllPersistentSettings(){
   operationMode = loadPersistentSetting('operationMode','two_persons');
@@ -1024,7 +1132,7 @@ function loadAllPersistentSettings(){
   loadOscSettings(); // Carrega OSC_HOST e OSC_PORT
   loadArpeggioSettings(); // Carrega configurações de arpejo
   
-  console.log("Configs V45 carregadas do localStorage.");
+  console.log("Configs V47 carregadas do localStorage.");
   return {
     savedMidiOutputId: loadPersistentSetting('midiOutputId',null),
     savedMidiInputId: loadPersistentSetting('midiInputId',null),
@@ -1038,8 +1146,8 @@ function loadArpeggioSettings(){try{const s=JSON.parse(localStorage.getItem(ARPE
 function populateArpeggioStyleSelect(){if(!arpeggioStyleSelect)return;arpeggioStyleSelect.innerHTML='';ARPEGGIO_STYLES.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();arpeggioStyleSelect.appendChild(o);});arpeggioStyleSelect.value=currentArpeggioStyle;}
 
 window.addEventListener('DOMContentLoaded', () => {
-    logDebug("DOM Carregado. Iniciando main45.js...");
-    console.log("DOM Carregado. Iniciando main45.js...");
+    logDebug("DOM Carregado. Iniciando main47.js...");
+    console.log("DOM Carregado. Iniciando main47.js...");
     detectPlatform();
     hasWebGL2 = checkWebGL2Support();
     if (!hasWebGL2) displayGlobalError("Aviso: WebGL2 não disponível.", 15000);
@@ -1060,12 +1168,16 @@ window.addEventListener('DOMContentLoaded', () => {
     initPresetManager();
     setupEventListeners(); // Configura todos os event listeners, incluindo os novos para áudio
     
-    // Instanciar SimpleSynth aqui se o AudioContext já foi inicializado por um gesto anterior
-    // (embora a política de autoplay geralmente exija que initAudioContext seja chamado por gesto)
-    // A inicialização principal do SimpleSynth ocorre em initAudioContext -> initAudioContextOnGesture
-    if (audioCtx && !simpleSynth) { // Se audioCtx existe mas synth não (caso raro)
-        simpleSynth = new SimpleSynth(audioCtx);
-        // Reaplica configs de áudio caso o synth tenha sido criado depois de loadAllPersistentSettings
+    // Tenta obter instâncias de áudio. A criação real depende de gesto.
+    // As variáveis globais audioCtx e simpleSynth em main47.js serão atualizadas
+    // após a chamada bem-sucedida de initAudioOnFirstGesture.
+    audioCtx = getAudioContext(); // Tenta obter o contexto de synth47.js
+    simpleSynth = getSimpleSynthInstance(); // Tenta obter a instância de synth47.js
+
+    if (simpleSynth) {
+        // Se o simpleSynth já foi instanciado (por exemplo, por um gesto anterior e recarregamento da página
+        // onde o AudioContext persistiu ou foi rapidamente re-instanciado por synth47.js),
+        // então reaplicamos as configurações salvas.
         const savedWaveform = loadPersistentSetting('audioWaveform', 'sine');
         const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5);
         simpleSynth.setWaveform(savedWaveform);
@@ -1073,8 +1185,50 @@ window.addEventListener('DOMContentLoaded', () => {
         if(audioWaveformSelect) audioWaveformSelect.value = savedWaveform;
         if(audioMasterVolumeSlider) audioMasterVolumeSlider.value = savedMasterVolume;
         if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = savedMasterVolume.toFixed(2);
+        console.log("SimpleSynth já existia ou foi obtido no DOMContentLoaded, configurações de áudio aplicadas.");
+    } else {
+        console.log("SimpleSynth não disponível no DOMContentLoaded. Aguardando gesto do usuário.");
     }
 
+    // Adiciona um listener para o primeiro gesto do usuário para inicializar/resumir o áudio.
+    // Este listener deve ser removido após a primeira execução bem-sucedida.
+    const firstGestureHandler = () => {
+        console.log("Primeiro gesto detectado, tentando inicializar o áudio via synth47.js...");
+        if (typeof initAudioContextOnGesture === "function") {
+            const audioReady = initAudioContextOnGesture(); // Chama a função de synth47.js
+            if (audioReady) {
+                audioCtx = getAudioContext(); // Atualiza a referência local
+                simpleSynth = getSimpleSynthInstance(); // Atualiza a referência local
+
+                if (simpleSynth) {
+                    // Aplica configurações salvas caso o synth tenha sido criado neste momento
+                    const vol = parseFloat(loadPersistentSetting('audioMasterVolume', 0.5));
+                    const wave = loadPersistentSetting('audioWaveform', 'sine');
+                    simpleSynth.setMasterVolume(vol);
+                    simpleSynth.setWaveform(wave);
+                    if(audioMasterVolumeSlider) audioMasterVolumeSlider.value = vol;
+                    if(audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = vol.toFixed(2);
+                    if(audioWaveformSelect) audioWaveformSelect.value = wave;
+                    console.log("Áudio inicializado/resumido por gesto e synth configurado.");
+                } else {
+                    console.error("Falha ao obter instância do SimpleSynth após initAudioContextOnGesture.");
+                }
+                updateHUD(); // Atualiza o HUD com o status do áudio
+                // Remove o listener para não ser chamado novamente
+                document.removeEventListener('click', firstGestureHandler);
+                document.removeEventListener('keydown', firstGestureHandler);
+                console.log("Listener de primeiro gesto para áudio removido.");
+            } else {
+                console.warn("initAudioContextOnGesture() de synth47.js não retornou sucesso. O áudio pode não estar pronto.");
+                // Não remove o listener para permitir futuras tentativas se a primeira falhar.
+            }
+        } else {
+            console.error("initAudioContextOnGesture não está definida globalmente (esperada de synth47.js).");
+        }
+    };
+    document.addEventListener('click', firstGestureHandler, { once: false }); // {once: false} para permitir nova tentativa se falhar
+    document.addEventListener('keydown', firstGestureHandler, { once: false });
+    console.log("Listeners para o primeiro gesto do usuário (para áudio) adicionados.");
 
     setupOSC(); // Configura OSC após carregar settings de OSC em loadAllPersistentSettings
 
@@ -1106,9 +1260,9 @@ window.addEventListener('DOMContentLoaded', () => {
     updateHUD(); // Atualiza o HUD com todos os estados carregados/padrão
     sendAllGlobalStatesOSC(); // Envia estados iniciais via OSC
 
-    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v45).\n`;
+    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v47).\n`;
     
-    console.log("Iniciando loop de animação (v45) e finalizando DOMContentLoaded.");
+    console.log("Iniciando loop de animação (v47) e finalizando DOMContentLoaded.");
     animationLoop(); 
 });
 

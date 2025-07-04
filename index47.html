@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MIDI Shape Manipulator v44</title> <!-- Version Update -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js?v=44"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js?v=44"></script>
+  <title>MIDI Shape Manipulator v47</title> <!-- Version Update -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js?v=47"></script> <!-- Предполагая, что вы хотите обновить и эти версии -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js?v=47"></script> <!-- Предполагая, что вы хотите обновить и эти версии -->
   <style>
     html, body { height: 100%; margin: 0; /* overflow: hidden; */ /* Allow body scroll if sidebar content is too tall and sidebar is fixed */ }
     body { background: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; color: #eee; position: relative; }
@@ -364,7 +364,7 @@
   <div id="infoModal" class="modal-overlay">
     <div class="modal-content">
       <button id="closeModal" class="close-modal-button" title="Fechar">&times;</button>
-      <h3>Manual do Usuário - MIDI Shape Manipulator v45</h3>
+      <h3>Manual do Usuário - MIDI Shape Manipulator v47</h3>
       
       <h4>Visão Geral</h4>
       <p>O MIDI Shape Manipulator é uma aplicação web interativa que transforma seus gestos de mão, capturados pela webcam, em música e visualizações dinâmicas. Controle formas geométricas na tela, gere notas MIDI, mensagens OSC e, agora, som diretamente no navegador!</p>
@@ -645,8 +645,9 @@
 
   <!-- <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script> --> <!-- Movido para o HEAD -->
   <!-- <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script> --> <!-- Movido para o HEAD -->
-  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js?v=44"></script>
-  <script src="main44.js" defer></script> <!-- ATUALIZADO PARA main44.js -->
+  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js?v=47"></script> <!-- Atualizado v47 -->
+  <script src="synth47.js" defer></script>
+  <script src="main47.js" defer></script> <!-- ATUALIZADO PARA main47.js -->
   <div id="hud"> <!-- HUD é visível por padrão, JS controlará a classe .hidden -->
     <button id="reconnectOSCButton" class="control-button">Reconnect OSC</button>
   </div>
