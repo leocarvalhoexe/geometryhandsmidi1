@@ -381,9 +381,7 @@ function processShapeNotes(shape, isPulsing, pulseValue) {
     }
 }
 
-// let handsInstance; // Removido, agora é 'hands' global
-// let cameraUtil; // Removido, agora é 'camera' global
-async function populateCameraSelect() { /* ... (implementation as in v41) ... */ }
+// async function populateCameraSelect() { /* ... (implementation as in v41) ... */ } // Removida duplicata
 async function initializeCamera(deviceId = null) {
     console.log(`Inicializando câmera com deviceId: ${deviceId || 'Padrão'}`); cameraError = false;
     if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
@@ -401,27 +399,35 @@ async function initializeCamera(deviceId = null) {
     try {
         const constraints = { video: { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false };
         if (deviceId) constraints.video.deviceId = { exact: deviceId };
+
+        console.log("Solicitando permissão da câmera com constraints:", constraints);
         mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log("Permissão da câmera obtida. MediaStream:", mediaStream);
         
         if (videoElement) {
             videoElement.srcObject = mediaStream;
+            console.log("videoElement.srcObject atribuído.");
             // Adiciona uma promessa para aguardar o play
             await new Promise((resolve, reject) => {
                 videoElement.onloadedmetadata = () => {
-                    videoElement.play().then(resolve).catch(e => {
-                        console.error("Erro play vídeo:", e);
+                    console.log("videoElement metadata carregado.");
+                    videoElement.play().then(() => {
+                        console.log("videoElement.play() bem-sucedido.");
+                        resolve();
+                    }).catch(e => {
+                        console.error("Erro ao tentar dar play no vídeo:", e);
                         cameraError = true;
                         reject(e);
                     });
                 };
                 videoElement.onerror = (e) => { // Adiciona handler de erro geral para o vídeo
-                    console.error("Erro no elemento de vídeo:", e);
+                    console.error("Erro no elemento de vídeo (onerror):", e);
                     cameraError = true;
                     reject(e);
                 };
             });
         } else {
-            console.error("videoElement não encontrado.");
+            console.error("videoElement não encontrado no DOM.");
             cameraError = true;
             if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
             return;
@@ -429,20 +435,27 @@ async function initializeCamera(deviceId = null) {
 
         // Inicializa e configura o objeto Hands se ainda não existir
         if (!hands) {
+            console.log("Instanciando MediaPipe Hands...");
             hands = new Hands({ 
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` 
+                locateFile: (file) => {
+                    const handsPath = `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                    console.log("Localizando arquivo para Hands:", handsPath);
+                    return handsPath;
+                }
             });
             
+            console.log("Configurando opções do Hands...");
             hands.setOptions({
-                maxNumHands: 2, // Conforme solicitado
+                maxNumHands: 2,
                 modelComplexity: 1,
-                minDetectionConfidence: 0.8, // Conforme solicitado
-                minTrackingConfidence: 0.8  // Conforme solicitado
+                minDetectionConfidence: 0.8,
+                minTrackingConfidence: 0.8
             });
+            console.log("Definindo callback onResults para Hands...");
             hands.onResults(onResults); // Configura o callback
         } else {
-            // Se hands já existe, apenas garante que as opções estão atualizadas (opcional, mas bom para consistência)
-             hands.setOptions({
+            console.log("Instância de Hands já existe. Atualizando opções (se necessário).");
+             hands.setOptions({ // Garante que as opções estão atualizadas
                 maxNumHands: 2,
                 modelComplexity: 1,
                 minDetectionConfidence: 0.8,
@@ -450,79 +463,315 @@ async function initializeCamera(deviceId = null) {
             });
         }
         
-        // Cria e inicia a nova instância da câmera
+        // Cria e inicia a nova instância da câmera utilitária do MediaPipe
+        console.log("Instanciando MediaPipe Camera...");
         camera = new Camera(videoElement, {
             onFrame: async () => {
+                // console.log("Camera.onFrame chamado."); // Log muito frequente, remover após depuração
                 if (gestureSimulationActive || cameraError || !videoElement || videoElement.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
                     if (cameraError && !gestureSimulationActive) {
+                        // console.log("Camera.onFrame: cameraError=true, desenhando fallback.");
                         drawFallbackAnimation();
-                        updateHUD();
+                        updateHUD(); // updateHUD pode ser chamado aqui para consistência
                     }
                     return;
                 }
-                if (hands) { // Verifica se hands está pronto
-                    await hands.send({ image: videoElement });
+                if (hands && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) { // Verifica se hands está pronto e vídeo tem dimensões
+                    try {
+                        await hands.send({ image: videoElement });
+                    } catch (e) {
+                        console.error("Erro ao enviar frame para hands.send:", e);
+                        cameraError = true; // Considerar erro de câmera se send falhar
+                    }
+                } else {
+                    // console.log("Camera.onFrame: hands não pronto ou vídeo sem dimensões.");
                 }
             },
-            width: 640, // Conforme solicitado
-            height: 480 // Conforme solicitado
+            width: 640,
+            height: 480
         });
         
+        console.log("Iniciando MediaPipe Camera (camera.start())...");
         await camera.start(); // Inicia a câmera
         
-        console.log("Camera e MediaPipe (re)inicializados.");
+        console.log("Camera e MediaPipe inicializados com sucesso.");
         currentCameraDeviceId = deviceId;
         localStorage.setItem(CAMERA_DEVICE_ID_KEY, currentCameraDeviceId || '');
 
     } catch (error) {
         console.error(`Falha ao inicializar webcam (ID: ${deviceId || 'Padrão'}):`, error);
-        displayGlobalError(`Falha webcam (${error.name || 'Error'}): ${error.message || 'Unknown error'}.`, 20000);
+        displayGlobalError(`Falha webcam (${error.name || 'Error'}): ${error.message || 'Desconhecido'}. Verifique permissões.`, 20000);
         cameraError = true;
-        if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
-        if (camera && typeof camera.stop === 'function') {
-            try { await camera.stop(); } catch(e) { console.warn("Erro ao tentar parar camera após falha:", e); }
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+            console.log("MediaStream tracks parados após erro.");
         }
-        camera = null;
+        if (camera && typeof camera.stop === 'function') {
+            try {
+                await camera.stop();
+                console.log("MediaPipe Camera parado após erro.");
+            } catch(e) {
+                console.warn("Erro ao tentar parar MediaPipe Camera após falha:", e);
+            }
+        }
+        camera = null; // Garante que a referência da câmera seja limpa
+        // Não chamar updateHUD() ou drawFallbackAnimation() diretamente aqui, pois o loop de animação deve cuidar disso.
     }
 }
-function onResults(results) { /* ... (implementation as in v41) ... */ }
-function drawLandmarks(landmarksArray) { /* ... (implementation as in v41) ... */ }
-function initFallbackShapes() { /* ... (implementation as in v41) ... */ }
-function drawFallbackAnimation() { /* ... (implementation as in v41) ... */ }
+// function onResults(results) { /* ... (implementation as in v41) ... */ } // Removida duplicata
+// function drawLandmarks(landmarksArray) { /* ... (implementation as in v41) ... */ } // Removida duplicata
+// function initFallbackShapes() { /* ... (implementation as in v41) ... */ } // Removida duplicata
+// function drawFallbackAnimation() { /* ... (implementation as in v41) ... */ } // Removida duplicata
 
-// === MEDIAPIPE HANDS & CAMERA (Copied from v41, shortened for brevity in this example) ===
+// === MEDIAPIPE HANDS & CAMERA (Mantendo a implementação principal abaixo) ===
 async function populateCameraSelect() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) { console.warn("enumerateDevices() não é suportado."); if(cameraSelectElement) cameraSelectElement.disabled = true; return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        console.warn("navigator.mediaDevices.enumerateDevices() não é suportado.");
+        if(cameraSelectElement) cameraSelectElement.disabled = true;
+        return;
+    }
     try {
+        console.log("Populando lista de câmeras...");
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        console.log("Dispositivos de vídeo encontrados:", videoDevices);
         if(cameraSelectElement) {
-            cameraSelectElement.innerHTML = '<option value="">Padrão do Navegador</option>'; let preferredDeviceId = null;
-            if (currentPlatform === 'Android') { const rearCamera = videoDevices.find(device => /back|rear|environment/i.test(device.label)); if (rearCamera) preferredDeviceId = rearCamera.deviceId; }
-            videoDevices.forEach(device => { const option = document.createElement('option'); option.value = device.deviceId; option.text = device.label || `Câmera ${cameraSelectElement.options.length}`; if (device.deviceId === currentCameraDeviceId) option.selected = true; else if (!currentCameraDeviceId && preferredDeviceId && device.deviceId === preferredDeviceId) { option.selected = true; currentCameraDeviceId = device.deviceId; } cameraSelectElement.appendChild(option); });
-            cameraSelectElement.disabled = videoDevices.length <= 1 && !videoDevices.find(d=>d.deviceId === currentCameraDeviceId);
+            cameraSelectElement.innerHTML = '<option value="">Padrão do Navegador</option>';
+            let preferredDeviceId = null;
+            // Lógica para câmera traseira em Android (pode ser ajustada)
+            if (currentPlatform === 'Android') {
+                const rearCamera = videoDevices.find(device => /back|rear|environment/i.test(device.label));
+                if (rearCamera) preferredDeviceId = rearCamera.deviceId;
+            }
+            videoDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Câmera ${cameraSelectElement.options.length}`;
+                if (device.deviceId === currentCameraDeviceId) {
+                    option.selected = true;
+                } else if (!currentCameraDeviceId && preferredDeviceId && device.deviceId === preferredDeviceId) {
+                    // Seleciona preferencial se nenhuma estiver salva e uma preferencial for encontrada
+                    option.selected = true;
+                    currentCameraDeviceId = device.deviceId; // Atualiza para refletir a seleção automática
+                }
+                cameraSelectElement.appendChild(option);
+            });
+            // Desabilita select se apenas uma câmera ou nenhuma, a menos que a selecionada seja a padrão
+            cameraSelectElement.disabled = videoDevices.length <= 1 && !videoDevices.find(d => d.deviceId === currentCameraDeviceId && currentCameraDeviceId !== '');
+            console.log("Lista de câmeras populada. Selecionada:", currentCameraDeviceId);
         }
-    } catch (err) { console.error("Erro ao listar câmeras: ", err); if(cameraSelectElement) cameraSelectElement.disabled = true; }
+    } catch (err) {
+        console.error("Erro ao listar câmeras: ", err);
+        if(cameraSelectElement) cameraSelectElement.disabled = true;
+    }
 }
-async function initializeCamera(deviceId = null) {
-    console.log(`Inicializando câmera com deviceId: ${deviceId || 'Padrão'}`); cameraError = false;
-    if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
-    if (cameraUtil && typeof cameraUtil.stop === 'function') { cameraUtil.stop(); }
-    try {
-        const constraints = { video: { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false };
-        if (deviceId) constraints.video.deviceId = { exact: deviceId };
-        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        if (videoElement) { videoElement.srcObject = mediaStream; videoElement.onloadedmetadata = () => videoElement.play().catch(e => { console.error("Erro play vídeo:", e); cameraError = true; });
-        } else { console.error("videoElement não encontrado."); cameraError = true; if (mediaStream) mediaStream.getTracks().forEach(track => track.stop()); return; }
-        if (!handsInstance) { handsInstance = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` }); handsInstance.setOptions({ maxNumHands: 4, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 }); handsInstance.onResults(onResults); }
-        cameraUtil = new Camera(videoElement, { onFrame: async () => { if (gestureSimulationActive) { if (cameraError && !gestureSimulationActive) { drawFallbackAnimation(); updateHUD(); } return; } if (videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !cameraError) await handsInstance.send({ image: videoElement }); else if (cameraError) { drawFallbackAnimation(); updateHUD(); } }, width: 640, height: 480 });
-        await cameraUtil.start(); console.log("Camera e MediaPipe (re)inicializados."); currentCameraDeviceId = deviceId; localStorage.setItem(CAMERA_DEVICE_ID_KEY, currentCameraDeviceId || '');
-    } catch (error) { console.error(`Falha webcam (ID: ${deviceId || 'Padrão'}):`, error); displayGlobalError(`Falha webcam (${error.name}): ${error.message}.`, 20000); cameraError = true; if (mediaStream) mediaStream.getTracks().forEach(track => track.stop()); }
-}
+// A segunda initializeCamera foi removida. A versão acima (mais nova) é a única utilizada.
+
 function onResults(results) {
-  ctx.fillStyle = 'rgba(0,0,0,0.08)'; ctx.fillRect(0,0,canvasElement.width, canvasElement.height);
-  shapes.forEach(s => { s.leftHandLandmarks = null; s.rightHandLandmarks = null; });
+  // console.log("onResults chamado. Resultados:", results); // Log muito frequente
+  ctx.fillStyle = 'rgba(0,0,0,0.08)'; // Efeito de "rastro" ou limpar frame anterior com opacidade
+  ctx.fillRect(0,0,canvasElement.width, canvasElement.height);
+
+  shapes.forEach(s => {
+    s.leftHandLandmarks = null;
+    s.rightHandLandmarks = null;
+  });
+
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    // console.log(`Mãos detectadas: ${results.multiHandLandmarks.length}`);
+    if (operationMode === 'one_person') {
+      let lH = null, rH = null;
+      results.multiHandLandmarks.forEach((landmarks, i) => {
+        if (!spectatorModeActive) drawLandmarks(landmarks, results.multiHandedness[i]?.label); // Passa handedness para drawLandmarks
+        const handedness = results.multiHandedness[i]?.label;
+        if (handedness === "Left" && !lH) lH = landmarks;
+        else if (handedness === "Right" && !rH) rH = landmarks;
+      });
+      shapes[0].leftHandLandmarks = lH;
+      shapes[0].rightHandLandmarks = rH;
+      if (shapes.length > 1) { // Garante que a segunda forma não tenha mãos se for modo 1P
+        shapes[1].leftHandLandmarks = null;
+        shapes[1].rightHandLandmarks = null;
+      }
+    } else { // two_persons mode
+      let assignedL = [false,false], assignedR = [false,false];
+      results.multiHandLandmarks.forEach((landmarks, i) => {
+        if (!spectatorModeActive) drawLandmarks(landmarks, results.multiHandedness[i]?.label); // Passa handedness
+        const handedness = results.multiHandedness[i]?.label;
+        for(let j=0; j<shapes.length; j++){
+          if(handedness === "Left" && !shapes[j].leftHandLandmarks && !assignedL[j]) {
+            shapes[j].leftHandLandmarks = landmarks;
+            assignedL[j]=true;
+            break;
+          }
+          if(handedness === "Right" && !shapes[j].rightHandLandmarks && !assignedR[j]) {
+            shapes[j].rightHandLandmarks = landmarks;
+            assignedR[j]=true;
+            break;
+          }
+        }
+      });
+    }
+  } else {
+    // console.log("Nenhuma mão detectada em onResults.");
+  }
+
+  shapes.forEach(shape => {
+    if (spectatorModeActive) {
+      shape.activeGesture = null;
+      return;
+    }
+    let gestureProcessed = false;
+    let currentGesture = null;
+    let wristCount = 0;
+    let avgWristX = 0;
+    let avgWristY = 0;
+
+    if (shape.leftHandLandmarks?.[0]) { // Pulso esquerdo
+      avgWristX += shape.leftHandLandmarks[0].x;
+      avgWristY += shape.leftHandLandmarks[0].y;
+      wristCount++;
+    }
+    if (shape.rightHandLandmarks?.[0]) { // Pulso direito
+      avgWristX += shape.rightHandLandmarks[0].x;
+      avgWristY += shape.rightHandLandmarks[0].y;
+      wristCount++;
+    }
+
+    if (wristCount > 0) { // Mover centro da forma com base na(s) mão(s)
+      shape.centerX = shape.centerX * 0.85 + (canvasElement.width - (avgWristX/wristCount * canvasElement.width)) * 0.15;
+      shape.centerY = shape.centerY * 0.85 + (avgWristY/wristCount * canvasElement.height) * 0.15;
+    }
+
+    // Lógica de Gestos (Exemplo: Resize, Sides, Liquify)
+    if (shape.leftHandLandmarks && shape.rightHandLandmarks) { // Gesto de duas mãos: Resize
+      const lThumb = shape.leftHandLandmarks[4], rThumb = shape.rightHandLandmarks[4]; // Pontas dos polegares
+      const lIdxCurl = shape.leftHandLandmarks[8].y > shape.leftHandLandmarks[6].y; // Indicador esquerdo curvado
+      const rIdxCurl = shape.rightHandLandmarks[8].y > shape.rightHandLandmarks[6].y; // Indicador direito curvado
+
+      if (lIdxCurl && rIdxCurl) { // Se ambos indicadores curvados (simulando agarrar)
+        currentGesture = 'resize';
+        gestureProcessed = true;
+        const dist = distance(lThumb.x, lThumb.y, rThumb.x, rThumb.y) * canvasElement.width; // Distância entre polegares
+        const normDist = Math.max(0,Math.min(1, (dist - 50)/(canvasElement.width*0.3))); // Normaliza
+        shape.radius = shape.radius*0.8 + (30 + normDist * 270)*0.2; // Ajusta raio
+        if (Math.abs(shape.radius - shape.lastResizeRadius) > 10 && (performance.now() - shape.lastResizeTime > 500)) {
+          shape.lastResizeRadius = shape.radius;
+          shape.lastResizeTime = performance.now();
+        }
+      }
+    }
+
+    if (!gestureProcessed && shape.leftHandLandmarks) { // Gesto mão esquerda: Mudar lados (Pinch)
+      const idx = shape.leftHandLandmarks[8], thumb = shape.leftHandLandmarks[4]; // Indicador e polegar
+      const pinchDist = distance(idx.x, idx.y, thumb.x, thumb.y) * canvasElement.width; // Distância do pinch
+      const pinchCanvasX = canvasElement.width - ((idx.x + thumb.x)/2 * canvasElement.width); // Posição X do centro do pinch
+      const pinchCanvasY = ((idx.y + thumb.y)/2 * canvasElement.height); // Posição Y
+
+      if (isTouchingCircle(pinchCanvasX, pinchCanvasY, shape.centerX, shape.centerY, shape.radius, shape.radius * 0.6)) {
+        currentGesture = 'sides';
+        gestureProcessed = true;
+        let newSides = (pinchDist > 150*1.2) ? 100 : Math.round(3 + Math.max(0,Math.min(1,(pinchDist-10)/150)) * (20-3)); // Ajusta lados
+        newSides = Math.max(3, Math.min(100, newSides));
+        if (newSides !== shape.sides && (performance.now() - shape.lastSideChangeTime > SIDE_CHANGE_DEBOUNCE_MS)) {
+          shape.sides = newSides;
+          shape.lastSideChangeTime = performance.now();
+          if(shape.currentEdgeIndex >= newSides) shape.currentEdgeIndex = Math.max(0, newSides-1);
+          turnOffAllActiveNotesForShape(shape);
+        }
+      }
+    }
+
+    if (!gestureProcessed && shape.rightHandLandmarks) { // Gesto mão direita: Liquify (se nenhuma outra prioridade)
+      currentGesture = 'liquify';
+    }
+
+    const oscGesture = currentGesture || 'none';
+    if (shape.lastSentActiveGesture !== oscGesture) {
+      sendOSCMessage(`/forma/${shape.id+1}/gestureActivated`, oscGesture);
+      shape.lastSentActiveGesture = oscGesture;
+    }
+    shape.activeGesture = currentGesture;
+  });
+
+  let pVal = 0; if(pulseModeActive) { pulseTime = performance.now()*0.001; pVal = Math.sin(pulseTime*pulseFrequency*2*Math.PI); }
+  shapes.forEach(s => drawShape(s, pulseModeActive, pVal));
+
+  const visNow = performance.now(); ctx.font="15px Arial"; ctx.textAlign="center";
+  notesToVisualize = notesToVisualize.filter(n => {
+    const age = visNow - n.timestamp;
+    if (age < 750) {
+      ctx.fillStyle = `rgba(255,255,255,${1-(age/750)})`;
+      ctx.fillText(n.noteName, n.x, n.y);
+      return true;
+    }
+    return false;
+  });
+
+  updateHUD(); // Atualiza o HUD com as informações mais recentes
+
+  // Lógica para janela popup (se existir)
+  if (outputPopupWindow && !outputPopupWindow.closed && popupCanvasCtx) {
+    try {
+      const pc = outputPopupWindow.document.getElementById('popupCanvas');
+      if (pc.width !== outputPopupWindow.innerWidth || pc.height !== outputPopupWindow.innerHeight) {
+        pc.width = outputPopupWindow.innerWidth; pc.height = outputPopupWindow.innerHeight;
+      }
+      popupCanvasCtx.fillStyle='rgba(0,0,0,0.1)';
+      popupCanvasCtx.fillRect(0,0,pc.width,pc.height);
+      popupCanvasCtx.drawImage(canvasElement,0,0,pc.width,pc.height);
+    } catch(e) {
+      if(e.name === "InvalidStateError" || outputPopupWindow?.closed) {
+        popupCanvasCtx=null; outputPopupWindow=null;
+      }
+    }
+  }
+}
+function drawLandmarks(landmarksArray, handedness = "Unknown") { // Adicionado handedness para cor
+  if (!landmarksArray || landmarksArray.length === 0 || spectatorModeActive) return;
+  const connections = [[0,1],[1,2],[2,3],[3,4], [0,5],[5,6],[6,7],[7,8], [5,9],[9,10],[10,11],[11,12], [9,13],[13,14],[14,15],[15,16], [13,17],[17,18],[18,19],[19,20], [0,17]];
+
+  // Define a cor baseada na lateralidade da mão
+  let strokeColor = 'lime'; // Cor padrão
+  if (handedness === 'Left') {
+    strokeColor = '#00FFFF'; // Ciano para mão esquerda
+  } else if (handedness === 'Right') {
+    strokeColor = '#FF00FF'; // Magenta para mão direita
+  }
+
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 2;
+
+  for (const conn of connections) {
+    const lm1 = landmarksArray[conn[0]];
+    const lm2 = landmarksArray[conn[1]];
+    if (lm1 && lm2) {
+      ctx.beginPath();
+      ctx.moveTo(canvasElement.width - (lm1.x * canvasElement.width), lm1.y * canvasElement.height);
+      ctx.lineTo(canvasElement.width - (lm2.x * canvasElement.width), lm2.y * canvasElement.height);
+      ctx.stroke();
+    }
+  }
+  // Opcional: Desenhar pontos nos landmarks
+  /*landmarksArray.forEach(lm => {
+    if (lm) {
+      ctx.beginPath();
+      ctx.arc(canvasElement.width - (lm.x * canvasElement.width), lm.y * canvasElement.height, 3, 0, Math.PI * 2);
+      ctx.fillStyle = strokeColor;
+      ctx.fill();
+    }
+  });*/
+}
+function initFallbackShapes() { if (fallbackShapes.length > 0) return; const numShapes = 5; const colors = ["#FF00FF", "#00FFFF", "#FFFF00", "#FF0000", "#00FF00"]; for (let i = 0; i < numShapes; i++) { fallbackShapes.push({ x: Math.random() * canvasElement.width, y: Math.random() * canvasElement.height, radius: 20 + Math.random() * 30, color: colors[i % colors.length], vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4, sides: 3 + Math.floor(Math.random() * 5) }); } }
+function drawFallbackAnimation() {
+  if (!canvasElement || !ctx) return; // Adiciona verificação de segurança
+  if (fallbackShapes.length === 0) initFallbackShapes();
+  ctx.fillStyle = 'rgba(0,0,0,0.1)';
+  ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+  ctx.font = "20px Arial"; ctx.fillStyle = "#777"; ctx.textAlign = "center";
+  ctx.fillText("Detecção de mãos indisponível.", canvasElement.width / 2, canvasElement.height / 2 - 50);
+  fallbackShapes.forEach(shape => { shape.x += shape.vx; shape.y += shape.vy; if (shape.x - shape.radius < 0 || shape.x + shape.radius > canvasElement.width) shape.vx *= -1; if (shape.y - shape.radius < 0 || shape.y + shape.radius > canvasElement.height) shape.vy *= -1; ctx.beginPath(); for (let i = 0; i < shape.sides; i++) { const angle = (i / shape.sides) * Math.PI * 2 + (performance.now() / 1000) * (shape.vx > 0 ? 0.5 : -0.5) ; const x = shape.x + shape.radius * Math.cos(angle); const y = shape.y + shape.radius * Math.sin(angle); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.closePath(); ctx.strokeStyle = shape.color; ctx.lineWidth = 3; ctx.stroke(); });
+}
     if (operationMode === 'one_person') { let lH = null, rH = null; results.multiHandLandmarks.forEach((landmarks, i) => { if (!spectatorModeActive) drawLandmarks(landmarks); const handedness = results.multiHandedness[i]?.label; if (handedness === "Left" && !lH) lH = landmarks; else if (handedness === "Right" && !rH) rH = landmarks; }); shapes[0].leftHandLandmarks = lH; shapes[0].rightHandLandmarks = rH; if (shapes.length > 1) { shapes[1].leftHandLandmarks = null; shapes[1].rightHandLandmarks = null; }
     } else { let assignedL = [false,false], assignedR = [false,false]; results.multiHandLandmarks.forEach((landmarks, i) => { if (!spectatorModeActive) drawLandmarks(landmarks); const handedness = results.multiHandedness[i]?.label; for(let j=0; j<shapes.length; j++){ if(handedness === "Left" && !shapes[j].leftHandLandmarks && !assignedL[j]) { shapes[j].leftHandLandmarks = landmarks; assignedL[j]=true; break;} if(handedness === "Right" && !shapes[j].rightHandLandmarks && !assignedR[j]) { shapes[j].rightHandLandmarks = landmarks; assignedR[j]=true; break;} } }); }
   }
@@ -562,7 +811,35 @@ function resetMidiSystem() { if (spectatorModeActive) return; console.log("MIDI 
 function loadOscSettings() { /* ... */ } function saveOscSettings(host, port) { /* ... */ } function sendOSCMessage(address, ...args) { /* ... */ } function sendOSCHeartbeat() { /* ... */ } function setupOSC() { /* ... */ } function handleIncomingExternalOSC(oscMessage) { /* ... */ } function sendAllGlobalStatesOSC() { /* ... */ } function logOSC(source, address, args, isSeparator = false) { /* ... */ } function exportOSCLog() { /* ... */ }
 // === OSC MANAGER (Copied from v41, shortened for brevity) ===
 function loadOscSettings() { const stored = localStorage.getItem(OSC_SETTINGS_KEY); let loadedHost = location.hostname; let loadedPort = 8080; if (stored) { try { const s = JSON.parse(stored); if (s.host) loadedHost = s.host; if (s.port) loadedPort = parseInt(s.port,10); } catch(e){ loadedHost = location.hostname || "127.0.0.1"; loadedPort = 8080; }} else { loadedHost = location.hostname || "127.0.0.1"; loadedPort = 8080; } OSC_HOST = loadedHost || "127.0.0.1"; OSC_PORT = loadedPort || 8080; if (oscHostInput) oscHostInput.value = OSC_HOST; if (oscPortInput) oscPortInput.value = OSC_PORT; console.log(`OSC Config: ${OSC_HOST}:${OSC_PORT}`); }
-function saveOscSettings(host, port) { const newPort = parseInt(port,10); if (isNaN(newPort) || newPort<1 || newPort>65535) { displayGlobalError("Porta OSC inválida.",5000); return false; } if (!host || host.trim()==="") { displayGlobalError("Host OSC vazio.",5000); return false; } const settings = {host:host.trim(), port:newPort}; try { localStorage.setItem(OSC_SETTINGS_KEY, JSON.stringify(settings)); OSC_HOST=settings.host; OSC_PORT=settings.port; console.log(`OSC Salvo: ${OSC_HOST}:${OSC_PORT}`); if(oscHostInput) oscHostInput.value = OSC_HOST; if(oscPortInput) oscPortInput.value = OSC_PORT; if (osc && typeof setupOSC === 'function') setupOSC(); return true; } catch(e) { displayGlobalError("Erro salvar OSC.",5000); return false; } }
+
+function saveOscSettings(host, port) {
+    const newPort = parseInt(port,10);
+    if (isNaN(newPort) || newPort<1 || newPort>65535) {
+        displayGlobalError("Porta OSC inválida.",5000);
+        return false;
+    }
+    // A chave '}' extra que poderia estar aqui causando o erro foi implicitamente removida
+    // ao restaurar a função para sua forma correta e validada.
+    if (!host || host.trim()==="") {
+        displayGlobalError("Host OSC vazio.",5000);
+        return false;
+    }
+    const settings = {host:host.trim(), port:newPort};
+    try {
+        localStorage.setItem(OSC_SETTINGS_KEY, JSON.stringify(settings));
+        OSC_HOST=settings.host;
+        OSC_PORT=settings.port;
+        console.log(`OSC Salvo: ${OSC_HOST}:${OSC_PORT}`);
+        if(oscHostInput) oscHostInput.value = OSC_HOST;
+        if(oscPortInput) oscPortInput.value = OSC_PORT;
+        if (osc && typeof setupOSC === 'function') setupOSC();
+        return true;
+    } catch(e) {
+        displayGlobalError("Erro salvar OSC.",5000);
+        return false;
+    }
+}
+
 function sendOSCMessage(address, ...args) { if (spectatorModeActive && !address.startsWith('/ping')) return; if (osc && osc.status() === OSC.STATUS.IS_OPEN) { const message = new OSC.Message(address, ...args); try { osc.send(message); } catch (error) { if (osc.status() !== OSC.STATUS.IS_OPEN && reconnectOSCButton) { reconnectOSCButton.style.display = 'inline-block'; oscStatus = "OSC Erro Envio"; updateHUD();}}} if (isRecordingOSC && !address.startsWith('/ping')) recordedOSCSequence.push({ timestamp: performance.now() - recordingStartTime, message: { address: message.address, args: message.args } }); } else { if (reconnectOSCButton && osc && osc.status() !== OSC.STATUS.IS_OPEN) reconnectOSCButton.style.display = 'inline-block'; } }
 function sendOSCHeartbeat() { sendOSCMessage('/ping', Date.now()); }
 function setupOSC() { if (osc && osc.status() === OSC.STATUS.IS_OPEN) osc.close(); if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId); oscHeartbeatIntervalId = null; console.log(`Conectando OSC: ws://${OSC_HOST}:${OSC_PORT}`); osc = new OSC({ plugin: new OSC.WebsocketClientPlugin({ host: OSC_HOST, port: OSC_PORT, secure: false }) }); osc.on('open', () => { oscStatus = `OSC Conectado (ws://${OSC_HOST}:${OSC_PORT})`; console.log(oscStatus); if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId); oscHeartbeatIntervalId = setInterval(sendOSCHeartbeat, 5000); sendOSCHeartbeat(); sendAllGlobalStatesOSC(); if (reconnectOSCButton) reconnectOSCButton.style.display = 'none'; updateHUD(); }); osc.on('close', (event) => { oscStatus = "OSC Desconectado"; if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId); oscHeartbeatIntervalId = null; if (reconnectOSCButton) reconnectOSCButton.style.display = 'inline-block'; updateHUD(); }); osc.on('error', (err) => { oscStatus = "OSC Erro Conexão"; if (oscHeartbeatIntervalId) clearInterval(oscHeartbeatIntervalId); oscHeartbeatIntervalId = null; if (reconnectOSCButton) reconnectOSCButton.style.display = 'inline-block'; updateHUD(); }); osc.on('message', (msg) => { try { let pMsg = msg; if (msg.args && msg.args.length > 0 && typeof msg.args[0] === 'string') { try { const pJson = JSON.parse(msg.args[0]); if (pJson.type === "confirmation" || (pJson.address && pJson.args)) pMsg = pJson; } catch (e) {} } if (pMsg && pMsg.address) { logOSC("IN (UDP)", pMsg.address, pMsg.args); handleIncomingExternalOSC(pMsg); } } catch (e) {} }); try { osc.open(); } catch (error) { oscStatus = `OSC Falha: ${error.message}`; if (reconnectOSCButton) reconnectOSCButton.style.display = 'inline-block'; updateHUD(); } osc.on('/global/setExternalBPM', msg => { /* ... */ }); osc.on('/global/setScale', msg => { /* ... */ }); }
