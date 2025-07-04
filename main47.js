@@ -2,6 +2,8 @@
 // MIDI SHAPE MANIPULATOR v47 - main47.js
 // ==========================================================================
 
+let audioCtx, simpleSynth; // Declaradas aqui, serão atribuídas via synth47.js
+
 // === DEBUGGING ===
 const DEBUG_MODE = true; // Defina como false para desabilitar logs de debug
 function logDebug(message, data = null) {
@@ -80,9 +82,7 @@ let externalBPM = null;
 let osc;
 let oscStatus = "OSC Desconectado";
 
-// Variáveis para o AudioContext e SimpleSynth de synth47.js
-let audioCtx = null;
-let simpleSynth = null;
+// Variáveis audioCtx e simpleSynth serão obtidas de synth47.js
 // internalAudioEnabled já é declarada e gerenciada mais abaixo.
 
 let OSC_HOST = localStorage.getItem('OSC_HOST') || location.hostname || "127.0.0.1";
