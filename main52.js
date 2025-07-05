@@ -1056,7 +1056,22 @@ function toggleGestureSimulation(){if(spectatorModeActive){displayGlobalError("S
 function setupEventListeners() {
     const closeModalButton = document.getElementById('closeModal');
     const infoModal = document.getElementById('infoModal');
-    if (sidebar && sidebarHandle) { sidebarHandle.addEventListener('click', (event) => { event.stopPropagation(); const isOpen = sidebar.classList.toggle('open'); sidebarHandle.textContent = isOpen ? '←' : '☰'; }); document.addEventListener('click', (event) => { if (sidebar.classList.contains('open') && !sidebar.contains(event.target) && event.target !== sidebarHandle) { sidebar.classList.remove('open'); sidebarHandle.textContent = '☰'; } }); sidebar.addEventListener('click', (event) => event.stopPropagation() ); }
+
+    if (sidebar && sidebarHandle) {
+        sidebarHandle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const isOpen = sidebar.classList.toggle('open');
+            sidebarHandle.textContent = isOpen ? '←' : '☰';
+        });
+        document.addEventListener('click', (event) => {
+            if (sidebar.classList.contains('open') && !sidebar.contains(event.target) && event.target !== sidebarHandle) {
+                sidebar.classList.remove('open');
+                sidebarHandle.textContent = '☰';
+            }
+        });
+        sidebar.addEventListener('click', (event) => event.stopPropagation() );
+    }
+
     const infoButtonElement = document.getElementById('info');
     if (infoButtonElement && infoModal) infoButtonElement.addEventListener('click', () => { infoModal.style.display = 'flex'; });
     if (closeModalButton && infoModal) closeModalButton.addEventListener('click', () => { infoModal.style.display = 'none'; });
