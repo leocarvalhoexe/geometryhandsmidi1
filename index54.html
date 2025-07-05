@@ -10,6 +10,30 @@
     html, body { height: 100%; margin: 0; /* overflow: hidden; */ /* Allow body scroll if sidebar content is too tall and sidebar is fixed */ }
     body { background: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; color: #eee; position: relative; }
 
+    /* Handle para a sidebar direita, similar ao da esquerda */
+    #synthSidebarHandle {
+      position: fixed; /* Fixed to the viewport */
+      top: 10px; /* Position from the top */
+      right: 10px; /* Position from the right */
+      width: 40px; /* Width of the handle */
+      height: 40px; /* Height of the handle */
+      background-color: #007bff;
+      border-radius: 5px; /* Slightly rounded corners */
+      border: 1px solid #0056b3;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px; /* Icon size */
+      color: #ffffff;
+      z-index: 1002; /* Above sidebar and potentially other elements */
+      transition: background-color 0.2s, right 0.3s ease-in-out; /* Smooth transition for right */
+      box-shadow: -1px 1px 3px rgba(0,0,0,0.3);
+    }
+    #synthSidebarHandle:hover {
+      background-color: #0056b3;
+    }
+
     .control-button {
       margin: 4px;
       padding: 8px 12px;
@@ -320,21 +344,25 @@
     /* V48: Synth Controls Sidebar Styles */
     #synthControlsSidebar {
       position: fixed;
-      top: 10px;
-      right: 10px;
+      top: 0; /* Ajustado para ocupar a altura toda */
+      bottom: 0; /* Ajustado para ocupar a altura toda */
+      right: 0; /* Alinhado à direita */
       width: 260px;
       background-color: #1c1c1c; /* Dark theme default */
       border-left: 1px solid #333; /* Dark theme default */
-      border-bottom: 1px solid #333; /* Dark theme default */
-      border-top: 1px solid #333; /* Dark theme default */
-      border-right: 1px solid #333; /* Dark theme default */
-      z-index: 1000; /* Same as HUD, ensure it's above canvas but below modals/left-sidebar */
-      padding: 15px;
-      box-shadow: -2px 2px 5px rgba(0,0,0,0.2);
-      border-radius: 5px;
+      z-index: 1001; /* Mesmo z-index do sidebar esquerdo */
+      padding: 10px;
+      padding-top: 60px; /* Espaço para o handle e um pouco mais */
+      box-shadow: -2px 0 5px rgba(0,0,0,0.2);
       overflow-y: auto;
-      max-height: calc(100vh - 20px); /* Adjust based on top/bottom margin */
+      max-height: 100vh; /* Ocupa altura toda */
       color: #eee; /* Dark theme default */
+      transform: translateX(100%); /* Começa fechado por padrão */
+      transition: transform 0.3s ease-in-out;
+    }
+
+    #synthControlsSidebar.open {
+      transform: translateX(0); /* Totalmente visível */
     }
 
     #synthControlsSidebar h4 {
@@ -410,6 +438,8 @@
 <body class="theme-dark">
 
   <div id="sidebarHandle">☰</div>
+  <!-- Botão para controlar a sidebar direita -->
+  <div id="synthSidebarHandle">🎛️</div>
 
   <div id="sidebar">
     <div id="sidebarContent">
@@ -859,8 +889,8 @@
     <button id="reconnectOSCButton" class="control-button">Reconnect OSC</button>
   </div>
 
-  <!-- V49: Right Sidebar for Synthesizer Controls (now toggleable) -->
-  <div id="synthControlsSidebar"> <!-- Este div já existe e será controlado por JS para mostrar/esconder -->
+  <!-- V49: Right Sidebar for Synthesizer Controls (agora com classe .open para controle via JS) -->
+  <div id="synthControlsSidebar">
     <h4>Controles do Sintetizador</h4>
     <div class="control-group">
       <label for="scWaveformSelect">Forma de Onda:</label>
