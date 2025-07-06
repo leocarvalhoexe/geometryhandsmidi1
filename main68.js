@@ -1377,10 +1377,6 @@ function setupEventListeners() {
         });
     }
 } // END OF setupEventListeners FUNCTION.
-  // v69: Added missing closing curly brace for the setupEventListeners function.
-  // This addresses the "SyntaxError: Unexpected token ')'" at the end of the
-  // DOMContentLoaded listener, caused by its '}' incorrectly closing setupEventListeners.
-
 // Garantir que a função setupEventListeners está fechada corretamente.
 // Se a chave já existia, esta mudança pode ser apenas de formatação.
 // Se faltava, ela foi adicionada pela linha contendo "}" acima deste comentário.
@@ -1771,10 +1767,6 @@ window.addEventListener('DOMContentLoaded', () => {
 // A chave extra no final do arquivo, que causava "Unexpected token '}'" após o listener do internalAudioToggleButton,
 // foi removida implicitamente ao garantir que o listener do DOMContentLoaded está corretamente fechado aqui.
 });
-// V68: Correção de sintaxe aplicada para fechar corretamente o listener do DOMContentLoaded.
-// A chave extra no final do arquivo, que causava "Unexpected token '}'" após o listener do internalAudioToggleButton,
-// foi removida implicitamente ao garantir que o listener do DOMContentLoaded está corretamente fechado aqui.
-});
 
 function animationLoop() {
   requestAnimationFrame(animationLoop);
@@ -1785,24 +1777,6 @@ function animationLoop() {
    } else if (audioActivityIndicator && audioActivityIndicator.style.backgroundColor !== '#555' && !isPlaying) { /* Dynamic indicator placeholder */ }
 }
 
-function initGestureMappingControls() {
-    const container = document.getElementById('gestureMappingControlsContainer'); if (!container) { console.error("Gesture mapping container not found!"); return; }
-    container.innerHTML = '';
-    for (let i = 0; i < MAX_GESTURE_MAPPINGS; i++) {
-        const mapping = gestureMappings[i] || { source: 'NONE', target: 'NONE' };
-        const groupDiv = document.createElement('div'); groupDiv.className = 'control-group gesture-mapping-item'; groupDiv.innerHTML = `<h5>Mapeamento ${i + 1}</h5>`;
-        const sourceLabel = document.createElement('label'); sourceLabel.htmlFor = `gestureSourceSelect${i}`; sourceLabel.textContent = 'Origem (Gesto/Forma):';
-        const sourceSelect = document.createElement('select'); sourceSelect.id = `gestureSourceSelect${i}`; sourceSelect.dataset.index = i;
-        for (const key in GESTURE_SOURCES) { const option = document.createElement('option'); option.value = key; option.textContent = GESTURE_SOURCES[key]; sourceSelect.appendChild(option); }
-        sourceSelect.value = mapping.source; sourceSelect.addEventListener('change', handleGestureMappingChange);
-        const targetLabel = document.createElement('label'); targetLabel.htmlFor = `synthTargetSelect${i}`; targetLabel.textContent = 'Destino (Sintetizador):';
-        const targetSelect = document.createElement('select'); targetSelect.id = `synthTargetSelect${i}`; targetSelect.dataset.index = i;
-        for (const key in SYNTH_TARGETS) { const option = document.createElement('option'); option.value = key; option.textContent = SYNTH_TARGETS[key]; targetSelect.appendChild(option); }
-        targetSelect.value = mapping.target; targetSelect.addEventListener('change', handleGestureMappingChange);
-        groupDiv.appendChild(sourceLabel); groupDiv.appendChild(sourceSelect); groupDiv.appendChild(targetLabel); groupDiv.appendChild(targetSelect); container.appendChild(groupDiv);
-    }
-    console.log("Gesture mapping controls initialized.");
-}
 function handleGestureMappingChange(event) {
     const index = parseInt(event.target.dataset.index, 10); const type = event.target.id.includes('Source') ? 'source' : 'target';
     if (gestureMappings[index]) { gestureMappings[index][type] = event.target.value;

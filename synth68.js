@@ -5,7 +5,7 @@
 // audioCtx e simpleSynth são agora gerenciados em main67.js
 // _internalAudioEnabledMaster também é gerenciado em main67.js
 
-const VALID_WAVEFORMS_V67 = ['sine', 'square', 'sawtooth', 'triangle', 'noise', 'pulse']; // Updated version
+const VALID_WAVEFORMS_V68 = ['sine', 'square', 'sawtooth', 'triangle', 'noise', 'pulse']; // Updated version
 
 function midiToFrequency(midiNote) {
   if (midiNote < 0 || midiNote > 127) return 0;
@@ -227,7 +227,7 @@ class SimpleSynth {
   setRelease(time) { this.releaseTime = Math.max(0.001, time); }
 
   setWaveform(newWaveform) {
-    if (VALID_WAVEFORMS_V67.includes(newWaveform)) { // Updated version
+    if (VALID_WAVEFORMS_V68.includes(newWaveform)) { // Updated version
         this.waveform = newWaveform;
         // logDebug(`Synth waveform set to: ${this.waveform}`); // logDebug is in main.js
     } else {
