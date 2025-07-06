@@ -31,6 +31,8 @@ let isGesturingBPM = false; // Retained for potential gesture control on BPM fad
 // =============== Grid Control Elements ===============
 const rowsInput = document.getElementById('rowsInput');
 const colsInput = document.getElementById('colsInput');
+const rowsValueDisplay = document.getElementById('rowsValueDisplay'); // Added for slider value
+const colsValueDisplay = document.getElementById('colsValueDisplay'); // Added for slider value
 const padSizeInput = document.getElementById('padSizeInput');
 const updateMatrixBtn = document.getElementById('updateMatrixBtn');
 
@@ -69,6 +71,21 @@ function updateMatrix(numRows, numCols, padSize) {
         console.error("Grid element not found!");
         return;
     }
+
+    // Store the state of active pads (by their note)
+    const activeNotes = new Set();
+    if (pads && pads.length > 0) {
+        pads.forEach(pad => {
+            if (pad.classList.contains('active')) {
+                activeNotes.add(pad.dataset.note);
+            }
+        });
+    }
+
+    // Store current sequencer column to attempt to restore it
+    const previousSequencerColumn = currentColumn;
+    const previousNumCols = currentNumCols; // Store previous number of columns
+
     grid.innerHTML = ''; // Clear old pads
     pads.length = 0;   // Clear the global 'pads' array
 
@@ -80,14 +97,11 @@ function updateMatrix(numRows, numCols, padSize) {
         isNaN(currentNumCols) || currentNumCols <= 0 ||
         isNaN(currentPadSize) || currentPadSize <= 0) {
         console.error("Invalid grid dimensions or pad size.");
-        // Optionally, provide feedback to the user here
         return;
     }
 
     grid.style.gridTemplateColumns = `repeat(${currentNumCols}, 1fr)`;
-    // Optional: Adjust gap based on padSize or keep it fixed. Example:
-    // grid.style.gap = `${Math.max(2, Math.floor(currentPadSize / 10))}px`;
-    grid.style.gap = '10px'; // Keeping fixed gap for now
+    grid.style.gap = '10px';
 
     const baseNote = 36; // Starting MIDI note
 
@@ -96,22 +110,44 @@ function updateMatrix(numRows, numCols, padSize) {
         pad.classList.add('pad');
         pad.style.width = `${currentPadSize}px`;
         pad.style.height = `${currentPadSize}px`;
-        pad.textContent = i + 1; // Simple 1-based indexing for display
-        pad.dataset.note = baseNote + i;
+        pad.textContent = i + 1;
+        const noteValue = baseNote + i; // Calculate note value
+        pad.dataset.note = noteValue.toString();
+
+        // Restore active state if this note was previously active
+        if (activeNotes.has(noteValue.toString())) {
+            pad.classList.add('active');
+        }
+
         pad.onclick = () => triggerPad(pad);
         grid.appendChild(pad);
         pads.push(pad);
     }
 
     if (isPlaying) {
-        currentColumn = 0; // Reset sequencer column
-        // If sequencer was playing, restart it with new settings
-        // togglePlayback(); // Stop
-        // togglePlayback(); // Start (this will re-read BPM and re-calculate interval)
-        // More direct approach:
-        clearInterval(timerId);
-        const columnInterval = 60000 / bpm;
-        timerId = setInterval(stepSequencer, columnInterval);
+        // Attempt to maintain sequencer position if number of columns hasn't changed
+        // Or if it changed, reset to 0 or cap at new max columns.
+        if (currentNumCols === previousNumCols) {
+            currentColumn = previousSequencerColumn;
+        } else {
+            currentColumn = Math.min(previousSequencerColumn, currentNumCols - 1);
+            if (currentColumn < 0) currentColumn = 0; // Ensure it's not negative if new numCols is 0
+        }
+
+        // Clear any existing column indicators before restarting interval
+        pads.forEach(p => p.classList.remove('sequencer-column-indicator'));
+
+        clearInterval(timerId); // Clear existing timer
+        if (currentNumCols > 0) { // Only restart if there are columns
+            const columnInterval = 60000 / bpm;
+            timerId = setInterval(stepSequencer, columnInterval);
+            // Immediately apply indicator to the current (possibly adjusted) column
+            stepSequencer(true); // Pass a flag to prevent advancing column immediately
+        } else {
+            // If no columns, ensure playback stops and UI updates
+            isPlaying = false;
+            if (playStopButton) playStopButton.textContent = 'Play';
+        }
     }
 }
 
@@ -152,13 +188,17 @@ if (playStopButton) {
   playStopButton.addEventListener('click', togglePlayback);
 }
 
-function stepSequencer() {
-  if (currentNumCols <= 0 || pads.length === 0) { // Safety check
-    // console.log("Step sequencer called with no columns or pads.");
+function stepSequencer(dontAdvanceColumn = false) { // Added optional parameter
+  if (currentNumCols <= 0 || pads.length === 0) {
     return;
   }
 
   pads.forEach(p => p.classList.remove('sequencer-column-indicator'));
+
+  // Ensure currentColumn is valid before proceeding
+  if (currentColumn >= currentNumCols || currentColumn < 0) {
+      currentColumn = 0; // Reset if out of bounds
+  }
 
   for (let r = 0; r < currentNumRows; r++) {
     const padIndex = r * currentNumCols + currentColumn;
@@ -175,7 +215,10 @@ function stepSequencer() {
       }
     }
   }
-  currentColumn = (currentColumn + 1) % currentNumCols;
+
+  if (!dontAdvanceColumn) {
+    currentColumn = (currentColumn + 1) % currentNumCols;
+  }
 }
 
 // =============== BPM Fader Functions (Horizontal) ====================
@@ -258,14 +301,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Set initial values for input fields and matrix
-    if (rowsInput && colsInput && padSizeInput) {
+    if (rowsInput && colsInput && padSizeInput && rowsValueDisplay && colsValueDisplay) {
         rowsInput.value = currentNumRows;
+        rowsValueDisplay.textContent = currentNumRows;
         colsInput.value = currentNumCols;
+        colsValueDisplay.textContent = currentNumCols;
         padSizeInput.value = currentPadSize;
+
+        // Event listeners for sliders to update their display values
+        rowsInput.addEventListener('input', () => {
+            rowsValueDisplay.textContent = rowsInput.value;
+            // Optionally, you could call updateMatrix here for dynamic updates,
+            // but for now, we'll stick to the button press for updates.
+        });
+        colsInput.addEventListener('input', () => {
+            colsValueDisplay.textContent = colsInput.value;
+            // Optionally, call updateMatrix here too if desired.
+        });
+
         updateMatrix(currentNumRows, currentNumCols, currentPadSize);
     } else {
-        // console.warn("Grid control input elements not all found on DOMContentLoaded.");
-        // Fallback to default if inputs are missing, though this shouldn't happen with correct HTML
+        console.warn("Some grid control input or display elements not found on DOMContentLoaded.");
+        // Fallback to default if inputs are missing
         updateMatrix(4, 4, 60);
     }
 
