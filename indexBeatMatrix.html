@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beat Matrix com Sintetizador</title>
+    <link rel="stylesheet" href="styleBeatMatrix.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Beat Matrix Synth</h1>
+        </header>
+
+        <section id="controls-main">
+            <div class="control-group">
+                <button id="play-stop-button">Play</button>
+            </div>
+            <div class="control-group">
+                <label for="bpm-slider">BPM: <span id="bpm-value">120</span></label>
+                <input type="range" id="bpm-slider" min="30" max="240" value="120">
+            </div>
+        </section>
+
+        <section id="matrix-controls">
+            <div class="control-group">
+                <label for="rows-slider">Linhas (Rows): <span id="rows-value">4</span></label>
+                <input type="range" id="rows-slider" min="1" max="16" value="4">
+            </div>
+            <div class="control-group">
+                <label for="cols-slider">Colunas (Cols): <span id="cols-value">8</span></label>
+                <input type="range" id="cols-slider" min="1" max="16" value="8">
+            </div>
+            <div class="control-group">
+                <label for="pad-size-slider">Tam. Pad: <span id="pad-size-value">50</span>px</label>
+                <input type="range" id="pad-size-slider" min="20" max="100" value="50">
+            </div>
+        </section>
+
+        <main id="beat-matrix-container">
+            <div id="grid">
+                <!-- Pads serão gerados por JavaScript -->
+            </div>
+        </main>
+
+        <section id="synth-controls">
+            <h2>Sintetizador</h2>
+            <div class="control-group">
+                <label for="waveform-select">Waveform:</label>
+                <select id="waveform-select">
+                    <option value="sine">Sine</option>
+                    <option value="square">Square</option>
+                    <option value="sawtooth">Sawtooth</option>
+                    <option value="triangle">Triangle</option>
+                    <option value="noise">Noise</option>
+                    <option value="pulse">Pulse</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="master-volume-slider">Volume Master: <span id="master-volume-value">0.5</span></label>
+                <input type="range" id="master-volume-slider" min="0" max="1" step="0.01" value="0.5">
+            </div>
+
+            <fieldset>
+                <legend>Envelope ADSR</legend>
+                <div class="control-group">
+                    <label for="attack-slider">Attack: <span id="attack-value">0.01</span>s</label>
+                    <input type="range" id="attack-slider" min="0.001" max="2" step="0.001" value="0.01">
+                </div>
+                <div class="control-group">
+                    <label for="decay-slider">Decay: <span id="decay-value">0.1</span>s</label>
+                    <input type="range" id="decay-slider" min="0.001" max="2" step="0.001" value="0.1">
+                </div>
+                <div class="control-group">
+                    <label for="sustain-slider">Sustain: <span id="sustain-value">0.7</span></label>
+                    <input type="range" id="sustain-slider" min="0" max="1" step="0.01" value="0.7">
+                </div>
+                <div class="control-group">
+                    <label for="release-slider">Release: <span id="release-value">0.2</span>s</label>
+                    <input type="range" id="release-slider" min="0.001" max="3" step="0.001" value="0.2">
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Efeitos</legend>
+                <div class="control-group">
+                    <label for="distortion-slider">Distorção: <span id="distortion-value">0</span>%</label>
+                    <input type="range" id="distortion-slider" min="0" max="100" step="1" value="0">
+                </div>
+                <div class="control-group">
+                    <label for="filter-cutoff-slider">Filtro Cutoff: <span id="filter-cutoff-value">20000</span> Hz</label>
+                    <input type="range" id="filter-cutoff-slider" min="20" max="20000" step="1" value="20000">
+                </div>
+                <div class="control-group">
+                    <label for="filter-resonance-slider">Filtro Res.: <span id="filter-resonance-value">1</span></label>
+                    <input type="range" id="filter-resonance-slider" min="0.1" max="30" step="0.1" value="1">
+                </div>
+                 <div class="control-group">
+                    <label for="delay-time-slider">Delay Time: <span id="delay-time-value">0.50</span> s</label>
+                    <input type="range" id="delay-time-slider" min="0.01" max="2" step="0.01" value="0.5">
+                </div>
+                <div class="control-group">
+                    <label for="delay-feedback-slider">Delay Feedback: <span id="delay-feedback-value">0.3</span></label>
+                    <input type="range" id="delay-feedback-slider" min="0" max="0.95" step="0.01" value="0.3">
+                </div>
+                 <div class="control-group">
+                    <label for="reverb-mix-slider">Reverb Mix: <span id="reverb-mix-value">0.0</span></label>
+                    <input type="range" id="reverb-mix-slider" min="0" max="1" step="0.01" value="0">
+                </div>
+            </fieldset>
+             <!-- Poderíamos adicionar controles de LFO aqui também, se desejado -->
+
+        </section>
+    </div>
+
+    <script src="synthBeatMatrix.js"></script>
+    <script src="mainBeatMatrix.js"></script>
+</body>
+</html>
