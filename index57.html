@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIDI Shape Manipulator v57</title> <!-- Versão 57 -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js?v=51"></script> <!-- Reverted to v51 for stability -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js?v=51"></script> <!-- Reverted to v51 for stability -->
+  <style>
+    html, body { height: 100%; margin: 0; /* overflow: hidden; */ /* Allow body scroll if sidebar content is too tall and sidebar is fixed */ }
+    body { background: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; color: #eee; position: relative; }
+
+    .control-button {
+      margin: 4px;
+      padding: 8px 12px;
+      background-color: #383838;
+      color: #ddd;
+      border: 1px solid #555;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 13px;
+      white-space: nowrap;
+      transition: background-color 0.2s, color 0.2s;
+      flex-shrink: 0;
+      display: block;
+      width: calc(100% - 8px);
+      text-align: left;
+    }
+    .control-button:hover { background-color: #4a4a4a; color: white; }
+    .control-button:active { background-color: #555; }
+    .control-button:disabled { background-color: #2a2a2a; color: #777; border-color: #444; cursor: not-allowed;}
+    .control-button.active { background-color: #007bff; color: white; border-color: #0056b3;}
+
+    #mainCanvasContainer { flex-grow: 1; position: relative; background-color: #000; overflow: hidden; /* Prevent canvas from causing scrollbars */ }
+    canvas#canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+
+    /* Sidebar Styles - v41 */
+    #sidebar {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      width: 250px;
+      background-color: #1c1c1c;
+      border-right: 1px solid #333;
+      z-index: 1001; /* Increased z-index to be above HUD if it ever overlaps during transitions, though HUD is also fixed */
+      transform: translateX(-100%); /* Initially hidden */
+      transition: transform 0.3s ease-in-out;
+      overflow-y: auto; /* Scroll if content exceeds height */
+      padding-top: 10px; /* Space for content */
+      box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+    }
+
+    #sidebar.open {
+      transform: translateX(0); /* Fully visible */
+    }
+
+    #sidebarHandle {
+      position: fixed; /* Fixed to the viewport */
+      top: 10px; /* Position from the top */
+      left: 10px; /* Position from the left */
+      width: 40px; /* Width of the handle */
+      height: 40px; /* Height of the handle */
+      background-color: #007bff;
+      border-radius: 5px; /* Slightly rounded corners */
+      border: 1px solid #0056b3;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px; /* Icon size */
+      color: #ffffff;
+      z-index: 1002; /* Above sidebar and potentially other elements */
+      transition: background-color 0.2s, left 0.3s ease-in-out; /* Smooth transition for left if sidebar pushes it */
+      box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    }
+    #sidebarHandle:hover {
+      background-color: #0056b3;
+    }
+
+    #sidebarContent {
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    /* V55: Estilo para o botão fixo do painel synth */
+    #toggleSynthPanelButtonFixed {
+        position: fixed;
+        top: 10px;
+        right: 280px; /* Ajustar conforme a largura do painel synth + margem desejada */
+        z-index: 1005; /* Acima do HUD (1000), sidebar (1001), handle (1002), mas abaixo de modais (1010) */
+        padding: 6px 10px; /* Um pouco menor que os botões da sidebar */
+        font-size: 18px; /* Ajuste para o ícone 🎛️ parecer bom */
+        width: auto; /* Largura automática baseada no conteúdo */
+        /* Outros estilos são herdados de .control-button */
+    }
+    /* V55: Garantir que o botão fixo não seja um .control-button com width: calc(100% - 8px) */
+    #toggleSynthPanelButtonFixed.control-button {
+        width: auto;
+    }
+
+
+    @media (max-width: 768px) { /* Example breakpoint for smaller screens */
+      #sidebar {
+        width: 220px; /* Slightly narrower on smaller screens */
+      }
+      /* V55: Ajustar posição do botão fixo em telas menores se necessário */
+      #toggleSynthPanelButtonFixed {
+        right: 10px; /* Exemplo: mais próximo da borda se o painel synth não estiver visível ou for mais estreito */
+        top: 60px; /* Exemplo: abaixo do handle da sidebar se estiver sobrepondo */
+      }
+    }
+
+    .modal-overlay {
+      display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.78); z-index: 1010; /* Higher z-index for modals */
+      justify-content: center; align-items: center;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    .modal-content {
+      background-color: #282c34; color: #abb2bf;
+      padding: 20px;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 750px;
+      position: relative;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+      border: 1px solid #3e4451;
+      -webkit-overflow-scrolling: touch;
+    }
+    .modal-content h3 { margin-top: 0; border-bottom: 1px solid #3e4451; padding-bottom: 10px; color: #61afef; font-size: 1.3em; }
+    .modal-content p, .modal-content ul, .modal-content label { line-height: 1.6; color: #abb2bf; font-size: 0.9em; }
+    .modal-content ul { padding-left: 18px; }
+    .modal-content li { margin-bottom: 5px;}
+    .modal-content strong { color: #e5c07b; }
+    .modal-content code { background-color: #3a3f4b; padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; color: #d19a66;}
+    .modal-content a { color: #61afef; text-decoration: none; }
+    .modal-content a:hover { text-decoration: underline; }
+    .close-modal-button { position: absolute; top: 12px; right: 18px; font-size: 28px; cursor: pointer; color: #777; background: none; border: none; line-height: 1; padding: 5px;}
+    .close-modal-button:hover { color: #ccc; }
+    .modal-footer { margin-top: 25px; padding-top: 18px; border-top: 1px solid #3e4451; text-align: center; font-size: 0.8em; color: #777;}
+
+    .modal-content label { display: block; margin-top: 15px; margin-bottom: 5px; font-weight: 600; color: #98c379;}
+    .modal-content select, .modal-content input[type="range"], .modal-content input[type="number"], .modal-content input[type="text"], .modal-content textarea {
+      width: 100%;
+      padding: 10px; margin-top: 5px; border-radius: 4px;
+      border: 1px solid #3e4451; background-color: #21252b; color: #abb2bf; font-size: 0.9em;
+      box-sizing: border-box;
+    }
+    .modal-content input[type="range"] { padding-left:0; padding-right:0; height: auto;}
+    .modal-content textarea { min-height: 80px; resize: vertical; line-height: 1.4; }
+    .modal-content .value-display { margin-left: 8px; font-size: 0.85em; color: #61afef; }
+    .modal-content .button-group {
+      margin-top: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .modal-content .button-group.extra-margin-top { /* Nova classe para o margin-top específico */
+      margin-top: 20px;
+    }
+    .modal-content .button-group button {
+      flex-grow: 1;
+      padding: 12px 15px;
+      font-size: 0.9em;
+    }
+     @media (min-width: 480px) {
+        .modal-content .button-group {
+            flex-direction: row;
+        }
+    }
+    .modal-content hr { border: 0; height: 1px; background-color: #3e4451; margin: 20px 0; }
+
+    /* Estilos específicos para botões movidos do inline */
+    #saveOscConfigButton.control-button { /* Aplicado a .control-button já existente com ID */
+      background-color: #28a745;
+      color: white;
+    }
+    #sendTestOSCButton.control-button {
+      margin-top: 12px;
+      background-color: #007bff;
+      /* color: white; é herdado de .control-button.active ou .theme-dark .control-button.active se for o caso, ou precisa ser explicitamente definido se não for active */
+    }
+     /* Para botões de log OSC, se não houver outra forma de agrupá-los, usar IDs ou classes específicas */
+    #clearOscLogButton.control-button,
+    #exportOscLogButton.control-button {
+      margin-top: 8px;
+    }
+    #deleteSelectedPresetButton.control-button {
+        background-color: #e06c75;
+        /* color: white;  Pode ser necessário se não for herdado */
+    }
+
+    /* Estilos para elementos que estavam inline */
+    video#video, input#importPresetFileInput {
+      display: none;
+    }
+    label[for="savedPresetsSelect"] {
+      margin-top: 20px;
+    }
+    select#savedPresetsSelect {
+      min-height: 80px;
+    }
+    button#reconnectOSCButton.control-button { /* Estilo mais específico para o botão de reconectar OSC */
+      display: none; /* Será controlado por JS para mostrar */
+      margin-left: 10px;
+      padding: 3px 6px;
+      font-size: 11px;
+    }
+
+    /* HUD Styles - v42 Update */
+    #hud {
+      position: fixed;
+      bottom: 10px; /* Standard margin from bottom */
+      right: 10px;  /* Positioned to the right */
+      background-color: rgba(20, 22, 28, 0.85);
+      color: #c8ccd4;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      z-index: 1000; /* Below sidebar (1001) and modals (1010) but above canvas */
+      max-width: calc(100% - 20px); /* Max width considering padding from both sides */
+      line-height: 1.55;
+      border: 1px solid #333842;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      /* transition: left 0.3s ease-in-out; REMOVED - No longer slides with sidebar */
+      /* Removed dynamic left and max-width calculation based on sidebar variables */
+    }
+    #hud.hidden { /* New class to hide HUD */
+        display: none;
+    }
+    #hud b { color: #61afef; }
+    #hud span.highlight { color: #e5c07b; }
+    #hud span.status-ok { color: #98c379; }
+    #hud span.status-error { color: #e06c75; }
+    #hud span.status-warn { color: #d19a66; }
+
+
+    /* Specific styles for active buttons based on their function */
+    #recordOSCButton.active { background-color: #e06c75; border-color: #c05c65;} /* Red for recording */
+    #playOSCLoopButton.active { background-color: #e5c07b; border-color: #c5a05b; color: #282c34;} /* Yellow/Orange for playing */
+    #syncDMXNotesButton.active, #midiFeedbackToggleButton.active, #spectatorModeButton.active { background-color: #56b6c2; border-color: #3696a2; color: white;} /* Teal/Cyan for active modes */
+
+    /* --- Theme Styles --- */
+    /* Dark Theme (Default) */
+    body.theme-dark { background-color: #111; color: #eee; }
+    .theme-dark #sidebar { background-color: #1c1c1c; border-right: 1px solid #333;}
+    .theme-dark .control-button { background-color: #383838; color: #ddd; border: 1px solid #555; }
+    .theme-dark .control-button:hover { background-color: #4a4a4a; color: white; }
+    .theme-dark .control-button:active { background-color: #555; }
+    .theme-dark .control-button:disabled { background-color: #2a2a2a; color: #777; border-color: #444; }
+    .theme-dark .control-button.active { background-color: #007bff; color: white; border-color: #0056b3; }
+    .theme-dark #recordOSCButton.active { background-color: #e06c75; border-color: #c05c65; color:white;}
+    .theme-dark #playOSCLoopButton.active { background-color: #e5c07b; border-color: #c5a05b; color: #282c34;}
+    .theme-dark #syncDMXNotesButton.active, .theme-dark #midiFeedbackToggleButton.active, .theme-dark #spectatorModeButton.active { background-color: #56b6c2; border-color: #3696a2; color: white;}
+    .theme-dark #mainCanvasContainer { background-color: #000; }
+    .theme-dark .modal-overlay { background-color: rgba(0,0,0,0.78); }
+    .theme-dark .modal-content { background-color: #282c34; color: #abb2bf; border: 1px solid #3e4451; box-shadow: 0 8px 25px rgba(0,0,0,0.5); }
+    .theme-dark .modal-content h3 { border-bottom: 1px solid #3e4451; color: #61afef; }
+    .theme-dark .modal-content p, .theme-dark .modal-content ul, .theme-dark .modal-content label { color: #abb2bf; }
+    .theme-dark .modal-content strong { color: #e5c07b; }
+    .theme-dark .modal-content code { background-color: #3a3f4b; color: #d19a66; }
+    .theme-dark .modal-content a { color: #61afef; }
+    .theme-dark .close-modal-button { color: #777; }
+    .theme-dark .close-modal-button:hover { color: #ccc; }
+    .theme-dark .modal-footer { border-top: 1px solid #3e4451; color: #777;}
+    .theme-dark .modal-content label { color: #98c379;}
+    .theme-dark .modal-content select, .theme-dark .modal-content input[type="range"], .theme-dark .modal-content input[type="number"], .theme-dark .modal-content input[type="text"], .theme-dark .modal-content textarea {
+      border: 1px solid #3e4451; background-color: #21252b; color: #abb2bf;
+    }
+    .theme-dark .modal-content .value-display { color: #61afef; }
+    .theme-dark .modal-content hr { background-color: #3e4451; }
+    .theme-dark #hud { background-color: rgba(20, 22, 28, 0.85); color: #c8ccd4; border: 1px solid #333842; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+    .theme-dark #hud b { color: #61afef; }
+    .theme-dark #hud span.highlight { color: #e5c07b; }
+    .theme-dark #hud span.status-ok { color: #98c379; }
+    .theme-dark #hud span.status-error { color: #e06c75; }
+    .theme-dark #hud span.status-warn { color: #d19a66; }
+
+    /* Light Theme */
+    body.theme-light { background-color: #f4f4f8; color: #333; }
+    .theme-light #sidebar { background-color: #e9e9ef; border-right: 1px solid #c0c0c8;}
+    .theme-light .control-button { background-color: #ccc; color: #333; border: 1px solid #aaa; }
+    .theme-light .control-button:hover { background-color: #bbb; color: #000; }
+    .theme-light .control-button:active { background-color: #aaa; }
+    .theme-light .control-button:disabled { background-color: #ddd; color: #999; border-color: #ccc; }
+    .theme-light .control-button.active { background-color: #007bff; color: white; border-color: #0056b3; }
+    .theme-light #recordOSCButton.active { background-color: #e06c75; border-color: #c05c65; color:white;}
+    .theme-light #playOSCLoopButton.active { background-color: #e5c07b; border-color: #c5a05b; color: #282c34;}
+    .theme-light #syncDMXNotesButton.active, .theme-light #midiFeedbackToggleButton.active, .theme-light #spectatorModeButton.active { background-color: #56b6c2; border-color: #3696a2; color: white;}
+    .theme-light #mainCanvasContainer { background-color: #e8e8ee; }
+    .theme-light .modal-overlay { background-color: rgba(50,50,50,0.6); }
+    .theme-light .modal-content { background-color: #fdfdff; color: #333; border: 1px solid #ccc; box-shadow: 0 6px 20px rgba(0,0,0,0.2); }
+    .theme-light .modal-content h3 { border-bottom: 1px solid #ddd; color: #0056b3; }
+    .theme-light .modal-content p, .theme-light .modal-content ul, .theme-light .modal-content label { color: #333; }
+    .theme-light .modal-content strong { color: #c678dd; }
+    .theme-light .modal-content code { background-color: #e8e8f0; color: #d19a66; border: 1px solid #ddd;}
+    .theme-light .modal-content a { color: #007bff; }
+    .theme-light .close-modal-button { color: #aaa; }
+    .theme-light .close-modal-button:hover { color: #777; }
+    .theme-light .modal-footer { border-top: 1px solid #ddd; color: #555;}
+    .theme-light .modal-content label { color: #28a745;}
+    .theme-light .modal-content select, .theme-light .modal-content input[type="range"], .theme-light .modal-content input[type="number"], .theme-light .modal-content input[type="text"], .theme-light .modal-content textarea {
+      border: 1px solid #ccc; background-color: #fff; color: #333;
+    }
+    .theme-light .modal-content .value-display { color: #007bff; }
+    .theme-light .modal-content hr { background-color: #ddd; }
+    .theme-light #hud { background-color: rgba(230, 230, 240, 0.9); color: #333; border: 1px solid #b0b0c0; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .theme-light #hud b { color: #0056b3; }
+    .theme-light #hud span.highlight { color: #c678dd; }
+    .theme-light #hud span.status-ok { color: #28a745; }
+    .theme-light #hud span.status-error { color: #dc3545; }
+    .theme-light #hud span.status-warn { color: #fd7e14; }
+
+    /* V48: Synth Controls Sidebar Styles */
+    #synthControlsSidebar {
+      position: fixed;
+      top: 10px; /* Default top, can be overridden if it's part of a movable panel */
+      right: 10px; /* Default right, will be adjusted if panel is hidden/shown from this side */
+      width: 260px;
+      background-color: #1c1c1c; /* Dark theme default */
+      border-left: 1px solid #333; /* Dark theme default */
+      border-bottom: 1px solid #333; /* Dark theme default */
+      border-top: 1px solid #333; /* Dark theme default */
+      border-right: 1px solid #333; /* Dark theme default */
+      z-index: 1000; /* Same as HUD, ensure it's above canvas but below modals/left-sidebar */
+      padding: 15px;
+      box-shadow: -2px 2px 5px rgba(0,0,0,0.2);
+      border-radius: 5px;
+      overflow-y: auto;
+      max-height: calc(100vh - 20px); /* Adjust based on top/bottom margin */
+      color: #eee; /* Dark theme default */
+      /* V55: Transition for sliding in/out */
+      transform: translateX(100%); /* Initially hidden to the right (e.g. 250px if width is 250px, or 100% of its own width) */
+      transition: transform 0.3s ease-in-out;
+    }
+
+    #synthControlsSidebar.open {
+        transform: translateX(0); /* Fully visible */
+    }
+
+    #synthControlsSidebar h4 {
+      margin-top: 0;
+      margin-bottom: 15px;
+      color: #61afef; /* Dark theme accent */
+      border-bottom: 1px solid #3e4451; /* Dark theme separator */
+      padding-bottom: 10px;
+      font-size: 1.1em;
+    }
+
+    #synthControlsSidebar .control-group {
+      margin-bottom: 12px;
+    }
+
+    #synthControlsSidebar label {
+      display: block;
+      font-size: 0.85em;
+      margin-bottom: 5px;
+      color: #98c379; /* Dark theme label color */
+    }
+
+    #synthControlsSidebar select,
+    #synthControlsSidebar input[type="range"] {
+      width: 100%;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #3e4451; /* Dark theme input border */
+      background-color: #21252b; /* Dark theme input bg */
+      color: #abb2bf; /* Dark theme input text */
+      box-sizing: border-box;
+      font-size: 0.9em;
+    }
+    #synthControlsSidebar input[type="range"] {
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    #synthControlsSidebar .value-display { /* For spans next to labels showing slider values */
+      margin-left: 8px;
+      font-size: 0.9em;
+      color: #61afef; /* Dark theme value display */
+    }
+
+    /* Theme specific overrides for Synth Controls Sidebar */
+    .theme-light #synthControlsSidebar {
+      background-color: #e9e9ef;
+      border-left: 1px solid #c0c0c8;
+      border-bottom: 1px solid #c0c0c8;
+      border-top: 1px solid #c0c0c8;
+      border-right: 1px solid #c0c0c8;
+      color: #333;
+    }
+    .theme-light #synthControlsSidebar h4 {
+      color: #0056b3;
+      border-bottom: 1px solid #ddd;
+    }
+    .theme-light #synthControlsSidebar label {
+      color: #28a745;
+    }
+    .theme-light #synthControlsSidebar select,
+    .theme-light #synthControlsSidebar input[type="range"] {
+      border: 1px solid #ccc;
+      background-color: #fff;
+      color: #333;
+    }
+    .theme-light #synthControlsSidebar .value-display {
+      color: #007bff;
+    }
+
+    /* V55: Style for the new fixed synth panel button is already above */
+
+  </style>
+</head>
+<body class="theme-dark">
+
+  <div id="sidebarHandle">☰</div>
+
+  <!-- V55: Botão movido para fora da sidebar -->
+  <button id="toggleSynthPanelButtonFixed" class="control-button" title="Mostrar/Ocultar Painel do Sintetizador (Shift+Y)">🎛️</button>
+
+
+  <div id="sidebar">
+    <div id="sidebarContent">
+      <button id="info" class="control-button" title="Manual do Usuário (Shift+I)">ℹ️ Manual</button>
+      <button id="infoHudButton" class="control-button" title="Mostrar/Ocultar Info HUD">ℹ️ Info HUD</button>
+      <button id="settingsButton" class="control-button" title="Configurações MIDI, Câmera, Áudio e Feedback (Shift+C)">⚙️ Configurações</button>
+      <!-- V55: Botão original #toggleSynthPanelButton foi removido daqui -->
+      <button id="arpeggioSettingsButton" class="control-button" title="Configurações do Arpejador (Shift+A)">🎼 Arpejo</button>
+      <button id="oscConfigButton" class="control-button" title="Configurações OSC (Shift+K)">📡 OSC Config</button>
+      <button id="internalAudioToggleButton" class="control-button" title="Ativar/Desativar Áudio Interno (Shift+V)">🔊 Áudio Interno</button>
+      <button id="midiToggleButton" class="control-button" title="Ativar/Desativar Envio MIDI (M)">🎹 MIDI</button>
+      <button id="syncDMXNotesButton" class="control-button" title="Sincronizar Notas MIDI como OSC para DMX (Shift+D)">🎶 Sync DMX</button>
+      <button id="recordOSCButton" class="control-button" title="Gravar/Parar Gravação de Loop OSC (Shift+R)">⏺️ Gravar OSC</button>
+      <button id="playOSCLoopButton" class="control-button" disabled title="Tocar/Parar Loop OSC Gravado (Shift+P)">▶️ Loop OSC</button>
+      <button id="shapePresetButton" class="control-button" title="Gerenciar Presets de Formas (Shift+B)">💾 Presets</button>
+      <button id="midiFeedbackToggleButton" class="control-button" title="Ativar/Desativar Feedback MIDI para OSC (Shift+F)">🎤 MIDI In</button>
+      <button id="spectatorModeButton" class="control-button" title="Ativar/Desativar Modo Espectador (Shift+S)">👓 Espectador</button>
+      <button id="themeToggleButton" class="control-button" title="Alternar Tema Claro/Escuro (Shift+T)">🌙 Tema</button>
+      <button id="gestureSimToggleButton" class="control-button" title="Simular Gestos (Dev Mode)">🤖 Simulador</button>
+    </div>
+  </div>
+
+  <div id="mainCanvasContainer">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <!-- MODAL DE CONFIGURAÇÃO OSC -->
+  <div id="oscConfigModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeOscConfigModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Configurações OSC</h3>
+      <p>Configure o endereço IP e a Porta do servidor WebSocket OSC. Estas configurações são salvas localmente no seu navegador e aplicadas ao clicar em "Salvar e Reconectar".</p>
+      <label for="oscHostInput">IP do Servidor OSC (Ex: 127.0.0.1 ou 192.168.0.105):</label>
+      <input type="text" id="oscHostInput" placeholder="127.0.0.1">
+      <label for="oscPortInput">Porta do Servidor OSC (Ex: 8080):</label>
+      <input type="number" id="oscPortInput" placeholder="8080" min="1" max="65535">
+      <div class="button-group extra-margin-top">
+        <button id="saveOscConfigButton" class="control-button">Salvar e Reconectar</button>
+        <button id="closeOscConfigModalBtnGeneric" type="button" class="control-button">Fechar</button>
+      </div>
+      <div class="modal-footer">
+        <p>Ao abrir via <code>file:///</code>, o IP padrão é <code>127.0.0.1</code>. Para uso em rede (ex: celular), insira o IP do computador onde <code>osc_relayXX.py</code> está rodando.</p>
+        <p>Certifique-se que o script Python está escutando na porta configurada (padrão <code>8080</code>) e em <code>0.0.0.0</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configurações de Arpejo -->
+  <div id="arpeggioSettingsModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeArpeggioSettingsModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Configurações de Arpejo</h3>
+      <label for="arpeggioStyleSelect">Estilo de Arpejo:</label>
+      <select id="arpeggioStyleSelect"></select>
+      <label for="arpeggioBPM">Velocidade (BPM): <span id="arpeggioBPMValue" class="value-display">120</span></label>
+      <input type="range" id="arpeggioBPM" min="30" max="300" value="120">
+      <label for="noteIntervalSlider">Intervalo entre Notas (ms): <span id="noteIntervalValue" class="value-display">500</span></label>
+      <input type="range" id="noteIntervalSlider" min="50" max="2000" value="500">
+      <div class="modal-footer"><p>Configurações de arpejo são aplicadas em tempo real.</p></div>
+    </div>
+  </div>
+
+  <!-- Modal de Informações -->
+  <div id="infoModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Manual do Usuário - MIDI Shape Manipulator v57</h3> <!-- Version Update -->
+
+      <h4>Visão Geral</h4>
+      <p>O MIDI Shape Manipulator é uma aplicação web interativa que transforma seus gestos de mão, capturados pela webcam, em música e visualizações dinâmicas. Controle formas geométricas na tela, gere notas MIDI, mensagens OSC e som diretamente no navegador, agora com cadência harmônica e maior expressividade musical!</p>
+      <p>Ideal para performances audiovisuais, exploração sonora e aprendizado sobre interação gestual.</p>
+
+      <hr>
+      <h4>Novidades da v57</h4> <!-- Version Update -->
+      <ul>
+        <li><strong>Melhorias no Acionamento de Notas (main57.js):</strong> Expressividade por movimento (velocity), detecção de proximidade para notas específicas, acionamento por distorção intensa (acordes com inversão/progressão harmônica), quantização rítmica, feedback visual aprimorado, modo PAUSE automático musical.</li>
+        <li><strong>Melhorias no Sintetizador (synth57.js):</strong> Modulação por velocity MIDI (ganho/brilho), timbres combinados (sine+saw, etc.), saturação/soft clipping opcional, reverb estéreo aprimorado (IR >0.5s), mudança dinâmica de waveform/envelope, visualização de buffer (opcional), ajuste automático de release (delay/reverb).</li>
+        <li>Mantém funcionalidades da v56, como cadência harmônica e sincronização musical.</li>
+      </ul>
+      <hr>
+      <h4>Novidades da v56 (Referência)</h4>
+      <ul>
+        <li><strong>Cadência Harmônica:</strong> Implementada estrutura de progressões de acordes (ex: I-vi-IV-V) que avançam automaticamente com o BPM.</li>
+        <li><strong>Sincronização Musical Aprimorada:</strong> Troca de acordes e modos de nota sincronizados com o tempo musical (BPM).</li>
+        <li><strong>Vinculação Forma-Música Expandida:</strong>
+            <ul>
+                <li>Número de lados da forma influencia a quantidade de notas ou complexidade de acordes.</li>
+                <li>Volume/intensidade continua baseado no raio da forma.</li>
+                <li>Pan e Pitch Bend mantidos (posição na tela e distorção).</li>
+            </ul>
+        </li>
+        <li><strong>Alternância Automática de Modos de Nota:</strong> Modos como ARPEGGIO, CHORD e SEQUENTIAL (e PAUSA) alternam automaticamente a cada compasso.</li>
+        <li><strong>Pausas Intencionais Dinâmicas:</strong> Formas com poucos lados, pequenas ou quando o usuário está inativo podem entrar em pausa, simulando "respiração" musical.</li>
+        <li><strong>Resposta a Gestos Avançada (Experimental):</strong>
+            <ul>
+                <li>Intensidade do gesto "liquify" pode influenciar a inversão de acordes.</li>
+                <li>Variações na altura do gesto "resize" podem (experimentalmente) transpor a tonalidade.</li>
+                <li>Velocidade de mudança do raio ("resize") pode aplicar boost temporário a efeitos.</li>
+            </ul>
+        </li>
+      </ul>
+
+      <hr>
+      <h4>Iniciando</h4>
+      <ol>
+        <li><strong>Permissão da Câmera:</strong> Ao abrir a página, seu navegador solicitará permissão para usar a webcam. Conceda para ativar a detecção de mãos.</li>
+        <li><strong>Áudio Interno:</strong>
+            <ul>
+                <li>Por padrão, o áudio interno está habilitado. Você deverá ouvir som assim que os gestos começarem a gerar notas.</li>
+                <li>Clique em qualquer lugar da página ou pressione uma tecla para garantir que o contexto de áudio do navegador seja ativado (política de autoplay).</li>
+                <li>Use o botão "🔊 Áudio Interno" (<code>Shift+V</code>) para ligar/desligar.</li>
+                <li>Ajuste o volume, forma de onda e outros parâmetros do sintetizador no novo painel à direita ou no modal de "⚙️ Configurações".</li>
+            </ul>
+        </li>
+        <li><strong>Saída MIDI (Opcional):</strong>
+            <ul>
+                <li>Para enviar notas MIDI para um DAW (Digital Audio Workstation) ou sintetizador de hardware, vá em "⚙️ Configurações" e selecione sua porta de saída MIDI desejada.</li>
+                <li>Certifique-se que o botão "🎹 MIDI" na barra lateral está ativo (ON). Atalho: <code>M</code>.</li>
+            </ul>
+        </li>
+        <li><strong>Conexão OSC (Opcional):</strong>
+            <ul>
+                <li>Para enviar mensagens OSC (Open Sound Control), configure o IP e a Porta do servidor OSC no modal "📡 OSC Config". O script <code>osc_relayXX.py</code> (incluído no repositório, execute com Python) pode ser usado como um servidor de relay local.</li>
+                <li>Após configurar, clique em "Salvar e Reconectar". O status da conexão aparecerá no HUD.</li>
+            </ul>
+        </li>
+      </ol>
+
+      <hr>
+      <h4>Interface Principal</h4>
+      <ul>
+        <li><strong>Barra Lateral (Esquerda):</strong> Acesse todas as funcionalidades principais. Clique no ícone ☰ para abrir/fechar.</li>
+        <li><strong>Painel de Controle do Sintetizador (Direita):</strong> Controles manuais para o sintetizador interno. Use o botão 🎛️ no canto superior direito para mostrar/ocultar.</li>
+        <li><strong>Canvas Principal:</strong> Área onde as formas são desenhadas e interagem com seus gestos.</li>
+        <li><strong>HUD (Heads-Up Display):</strong> Painel no canto inferior direito com informações de status em tempo real (MIDI, OSC, Áudio, gestos, etc.). Use o botão "ℹ️ Info HUD" na barra lateral para mostrar/ocultar.</li>
+      </ul>
+
+      <hr>
+      <h4>Controles e Funcionalidades (Botões da Barra Lateral Esquerda)</h4>
+      <ul>
+        <li><strong>ℹ️ Manual:</strong> Abre esta janela de informações (<code>Shift+I</code>).</li>
+        <li><strong>ℹ️ Info HUD:</strong> Mostra/oculta o painel de informações (HUD).</li>
+        <li><strong>⚙️ Configurações:</strong> Abre o modal para configurar:
+            <ul>
+                <li><strong>Saída e Entrada MIDI:</strong> Selecione os dispositivos MIDI.</li>
+                <li><strong>Câmera:</strong> Escolha a fonte de vídeo.</li>
+                <li><strong>Áudio Interno:</strong> Defina a Forma de Onda, Volume Master, ADSR e Distorção do sintetizador interno (também controlável pelo painel direito).</li>
+            </ul>
+        </li>
+        <li><strong>🎼 Arpejo:</strong> Configurações do arpejador (Estilo, BPM, Intervalo de Nota) (<code>Shift+A</code>).</li>
+        <li><strong>📡 OSC Config:</strong> Configura IP e Porta para comunicação OSC (<code>Shift+K</code>). Abre também um painel para enviar mensagens OSC de teste e ver logs.</li>
+        <li><strong>🔊 Áudio Interno:</strong> Ativa/Desativa o sintetizador de áudio interno (<code>Shift+V</code>).</li>
+        <li><strong>🎹 MIDI:</strong> Ativa/Desativa o envio de mensagens MIDI (<code>M</code>).</li>
+        <li><strong>🎶 Sync DMX:</strong> Sincroniza notas MIDI como mensagens OSC formatadas para controle DMX (<code>Shift+D</code>).</li>
+        <li><strong>⏺️ Gravar OSC:</strong> Grava uma sequência de mensagens OSC enviadas pela aplicação (<code>Shift+R</code>).</li>
+        <li><strong>▶️ Loop OSC:</strong> Reproduz a sequência OSC gravada. Fica habilitado após uma gravação (<code>Shift+P</code>).</li>
+        <li><strong>💾 Presets:</strong> Gerencia presets de configuração das formas (Salvar, Carregar, Deletar, Importar/Exportar JSON) (<code>Shift+B</code>).</li>
+        <li><strong>🎤 MIDI In:</strong> Ativa/Desativa o feedback de mensagens MIDI recebidas (via porta de entrada selecionada) para o log OSC (<code>Shift+F</code>).</li>
+        <li><strong>👓 Espectador:</strong> Desativa o controle por gestos e para a geração de notas/OSC, útil para apenas observar (<code>Shift+S</code>).</li>
+        <li><strong>🌙 Tema:</strong> Alterna entre tema claro e escuro (<code>Shift+T</code>).</li>
+        <li><strong>🤖 Simulador:</strong> Ativa/Desativa um modo de simulação de gestos, útil para desenvolvimento ou quando uma câmera não está disponível.</li>
+      </ul>
+
+      <hr>
+      <h4>Gestos e Interação com as Formas</h4>
+      <p>O sistema detecta até duas mãos (dependendo do modo de operação). Cada mão (ou par de mãos, no modo "one_person") pode controlar uma forma geométrica.</p>
+      <ul>
+        <li><strong>Posicionamento da Forma:</strong> O centro da forma geralmente segue a posição média dos pulsos detectados para ela.</li>
+        <li><strong>Controle de Raio (Tamanho):</strong>
+            <ul>
+                <li><strong>Modo "one_person":</strong> Junte os polegares das duas mãos e afaste/aproxime as mãos (como se estivesse esticando ou encolhendo algo entre elas) enquanto os dedos indicadores estão curvados/fechados.</li>
+                <li><strong>Modo "two_persons":</strong> (Este gesto pode precisar de revisão/simplificação para controle individual por forma) Atualmente, o raio afeta a velocidade das notas.</li>
+            </ul>
+        </li>
+        <li><strong>Controle de Lados (Complexidade da Forma):</strong>
+            <ul>
+                <li><strong>Modo "one_person":</strong> Use a mão esquerda. Faça um gesto de pinça com o polegar e o indicador. A distância entre os dedos controla o número de lados da forma (de 3 a 20, ou círculo se muito afastado). A pinça deve estar próxima à borda da forma.</li>
+                 <li><strong>Modo "two_persons":</strong> Cada forma é controlada pela mão esquerda da "pessoa" correspondente (mão mais à esquerda para Forma 1, próxima mão à esquerda para Forma 2, se houver).</li>
+            </ul>
+        </li>
+        <li><strong>Distorção / "Liquify" / Efeitos:</strong>
+            <ul>
+                <li><strong>Modo "one_person":</strong> Use a mão direita. A proximidade das pontas dos dedos da mão direita aos vértices da forma causa uma distorção "líquida". Essa distorção também modula parâmetros MIDI CC como Reverb (CC91), Delay (CC94), ModWheel (CC1) e Resonance (CC71), além do Pitch Bend.</li>
+                <li><strong>Modo "two_persons":</strong> Cada forma é controlada pela mão direita da "pessoa" correspondente.</li>
+            </ul>
+        </li>
+        <li><strong>Geração de Notas:</strong> As notas são geradas com base no "Modo de Nota" selecionado (Sequencial, Arpejo, Acorde, Random Walk) e na escala musical atual.
+            <ul>
+                <li><strong>Modo Sequencial:</strong> As notas são tocadas sequencialmente ao longo das bordas da forma.</li>
+                <li><strong>Modo Arpejo:</strong> As notas da forma são tocadas em um padrão de arpejo (configurável em "🎼 Arpejo").</li>
+                <li><strong>Modo Acorde:</strong> Um acorde é formado com base na nota da borda atual.</li>
+                <li><strong>Modo Random Walk:</strong> Uma nota aleatória dentro da escala é escolhida.</li>
+            </ul>
+            O número de lados da forma geralmente influencia quais notas estão disponíveis. O raio da forma afeta a velocidade (volume) das notas.
+        </li>
+      </ul>
+      <p><strong>Modos de Operação (Alternado por botão, não implementado ainda via UI, mas presente no código):</strong></p>
+      <ul>
+        <li><code>one_person</code>: Uma pessoa controla uma forma principal usando ambas as mãos para gestos mais complexos (mão esquerda para lados, direita para liquify, ambas para raio).</li>
+        <li><code>two_persons</code>: Duas "pessoas" (ou duas mãos independentes) controlam duas formas separadas. A mão esquerda de cada "pessoa" controla os lados da sua forma, e a mão direita controla o "liquify".</li>
+      </ul>
+
+      <hr>
+      <h4>Solução de Problemas Comuns</h4>
+      <ul>
+        <li><strong>Sem som (Áudio Interno):</strong>
+            <ul>
+                <li>Verifique se "🔊 Áudio Interno" está ON.</li>
+                <li>Clique na página ou pressione uma tecla para ativar o áudio do navegador.</li>
+                <li>Aumente o "Volume Master" no painel direito ou em "⚙️ Configurações".</li>
+                <li>Verifique se a saída de som do seu computador está funcionando e não está no mudo.</li>
+            </ul>
+        </li>
+        <li><strong>Sem som (MIDI):</strong>
+            <ul>
+                <li>Verifique se "🎹 MIDI" está ON.</li>
+                <li>Verifique se uma porta de Saída MIDI válida está selecionada em "⚙️ Configurações".</li>
+                <li>Confirme se seu DAW/sintetizador está configurado para receber MIDI da porta selecionada e do canal correto (Forma 1 usa Canal 1, Forma 2 usa Canal 2 por padrão).</li>
+            </ul>
+        </li>
+        <li><strong>Câmera não funciona:</strong>
+            <ul>
+                <li>Certifique-se de ter concedido permissão à câmera.</li>
+                <li>Verifique se outra aplicação não está usando a câmera.</li>
+                <li>Tente selecionar uma câmera específica em "⚙️ Configurações" se tiver múltiplas.</li>
+                <li>Se falhar, uma animação alternativa será exibida. Você pode usar o "🤖 Simulador" para interagir.</li>
+            </ul>
+        </li>
+        <li><strong>OSC não conecta:</strong>
+            <ul>
+                <li>Verifique se o IP e Porta em "📡 OSC Config" estão corretos.</li>
+                <li>Certifique-se que o script <code>osc_relayXX.py</code> (ou seu servidor OSC) está rodando e escutando no IP/Porta corretos (geralmente <code>0.0.0.0</code> para o IP no script Python, para aceitar conexões de qualquer origem na sua rede local).</li>
+                <li>Verifique as configurações de firewall.</li>
+                <li>Use o botão "Reconnect OSC" no HUD se a conexão cair.</li>
+            </ul>
+        </li>
+        <li><strong>Gestos não são detectados corretamente:</strong>
+            <ul>
+                <li>Garanta boa iluminação e um fundo contrastante com suas mãos.</li>
+                <li>Mantenha as mãos claramente visíveis para a câmera.</li>
+                <li>Consulte a seção "Gestos" para entender como cada controle funciona.</li>
+            </ul>
+        </li>
+      </ul>
+
+      <hr>
+      <h4>Atalhos de Teclado (Padrão)</h4>
+      <ul>
+        <li><code>Shift + I</code>: Abrir/Fechar Manual do Usuário</li>
+        <li><code>Shift + C</code>: Abrir/Fechar Configurações</li>
+        <li><code>Shift + A</code>: Abrir/Fechar Configurações do Arpejador</li>
+        <li><code>Shift + K</code>: Abrir/Fechar Configurações OSC</li>
+        <li><code>Shift + V</code>: Alternar Áudio Interno ON/OFF</li>
+        <li><code>M</code>: Alternar Envio MIDI ON/OFF</li>
+        <li><code>Shift + D</code>: Alternar Sync DMX ON/OFF</li>
+        <li><code>Shift + R</code>: Iniciar/Parar Gravação de Loop OSC</li>
+        <li><code>Shift + P</code>: Tocar/Parar Loop OSC Gravado</li>
+        <li><code>Shift + B</code>: Abrir/Fechar Gerenciador de Presets</li>
+        <li><code>Shift + F</code>: Alternar Feedback MIDI para OSC (MIDI In) ON/OFF</li>
+        <li><code>Shift + S</code>: Alternar Modo Espectador ON/OFF</li>
+        <li><code>Shift + T</code>: Alternar Tema Claro/Escuro</li>
+        <li><code>Shift + Y</code>: Mostrar/Ocultar Painel do Sintetizador (agora com botão fixo)</li>
+        <li><code>Esc</code>: Fechar modais abertos / Remover foco de inputs.</li>
+        </ul>
+        <p><em>Nota: Alguns atalhos podem ser reconfigurados ou adicionados em futuras versões.</em></p>
+
+      <hr>
+      <h4>Histórico de Versões Anteriores (Resumido)</h4>
+      <p><strong>v53:</strong> (Base desta versão) Mantém funcionalidades da v52.</p>
+      <p><strong>v52:</strong> BPM slider no painel synth, notas sequenciais por vértice, gravação de áudio interno.</p>
+      <p><strong>v48:</strong> Painel de controle do sintetizador dedicado na lateral direita.</p>
+      <p><strong>v47:</strong> Adicionados controles ADSR e Distorção ao sintetizador interno e ao modal de Configurações.</p>
+      <p><strong>v45:</strong> Áudio interno (Web Audio API), forma de onda, volume master.</p>
+      <p><em>(Para detalhes de versões mais antigas, consulte commits anteriores no repositório.)</em></p>
+
+      <div class="modal-footer">
+        <p>Desenvolvido por <a href="https://www.instagram.com/leocarvalho.exe" target="_blank" rel="noopener noreferrer">Leonardo Carvalho</a> — 2024</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configurações MIDI e Câmera -->
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeSettingsModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Configurações MIDI, Câmera e Áudio</h3>
+      <label for="midiOutputSelect">Porta de Saída MIDI:</label>
+      <select id="midiOutputSelect"></select>
+      <label for="midiInputSelect">Porta de Entrada MIDI (para Feedback OSC):</label>
+      <select id="midiInputSelect"></select>
+      <hr>
+      <label for="cameraSelect">Selecionar Câmera:</label>
+      <select id="cameraSelect">
+        <option value="">Padrão do Navegador</option>
+      </select>
+      <hr>
+      <h4>Configurações de Áudio Interno</h4>
+      <p><em>Estes controles também estão disponíveis no painel direito para acesso rápido.</em></p>
+      <label for="audioWaveformSelect">Forma de Onda:</label>
+      <select id="audioWaveformSelect">
+        <option value="sine">Sine (Senoidal)</option>
+        <option value="square">Square (Quadrada)</option>
+        <option value="sawtooth">Sawtooth (Dente de Serra)</option>
+        <option value="triangle">Triangle (Triangular)</option>
+      </select>
+      <label for="audioMasterVolume">Volume Master: <span id="audioMasterVolumeValue" class="value-display">0.5</span></label>
+      <input type="range" id="audioMasterVolume" min="0" max="1" step="0.01" value="0.5">
+
+      <!-- Controles ADSR -->
+      <h5>Envelope ADSR</h5>
+      <label for="audioAttackSlider">Attack: <span id="audioAttackValue" class="value-display">0.01</span>s</label>
+      <input type="range" id="audioAttackSlider" min="0.001" max="2" step="0.001" value="0.01">
+
+      <label for="audioDecaySlider">Decay: <span id="audioDecayValue" class="value-display">0.1</span>s</label>
+      <input type="range" id="audioDecaySlider" min="0.001" max="2" step="0.001" value="0.1">
+
+      <label for="audioSustainSlider">Sustain Level: <span id="audioSustainValue" class="value-display">0.7</span></label>
+      <input type="range" id="audioSustainSlider" min="0" max="1" step="0.01" value="0.7">
+
+      <label for="audioReleaseSlider">Release: <span id="audioReleaseValue" class="value-display">0.2</span>s</label>
+      <input type="range" id="audioReleaseSlider" min="0.001" max="3" step="0.001" value="0.2">
+      <!-- Fim Controles ADSR -->
+
+      <!-- Controle de Distorção -->
+      <h5>Efeitos</h5>
+      <label for="audioDistortionSlider">Distorção: <span id="audioDistortionValue" class="value-display">0</span>%</label>
+      <input type="range" id="audioDistortionSlider" min="0" max="100" step="1" value="0">
+      <!-- Fim Controle de Distorção -->
+
+      <!-- Controles de Filtro -->
+      <h5>Filtro Low-Pass</h5>
+      <label for="audioFilterCutoffSlider">Frequência de Corte: <span id="audioFilterCutoffValue" class="value-display">20000</span> Hz</label>
+      <input type="range" id="audioFilterCutoffSlider" min="20" max="20000" step="1" value="20000">
+
+      <label for="audioFilterResonanceSlider">Ressonância (Q): <span id="audioFilterResonanceValue" class="value-display">1</span></label>
+      <input type="range" id="audioFilterResonanceSlider" min="0.1" max="30" step="0.1" value="1">
+      <!-- Fim Controles de Filtro -->
+
+      <!-- Controles de LFO V51 -->
+      <h5>LFO (Low-Frequency Oscillator)</h5>
+      <label for="audioLfoWaveformSelect">Forma de Onda LFO:</label>
+      <select id="audioLfoWaveformSelect">
+        <option value="sine">Sine</option>
+        <option value="square">Square</option>
+        <option value="sawtooth">Sawtooth</option>
+        <option value="triangle">Triangle</option>
+      </select>
+      <label for="audioLfoRateSlider">LFO Rate: <span id="audioLfoRateValue" class="value-display">5</span> Hz</label>
+      <input type="range" id="audioLfoRateSlider" min="0.1" max="20" step="0.1" value="5">
+      <label for="audioLfoPitchDepthSlider">LFO Pitch Depth: <span id="audioLfoPitchDepthValue" class="value-display">0</span> Hz</label>
+      <input type="range" id="audioLfoPitchDepthSlider" min="0" max="50" step="0.1" value="0">
+      <label for="audioLfoFilterDepthSlider">LFO Filter Depth: <span id="audioLfoFilterDepthValue" class="value-display">0</span> Hz</label>
+      <input type="range" id="audioLfoFilterDepthSlider" min="0" max="5000" step="10" value="0">
+      <!-- Fim Controles de LFO -->
+
+      <!-- Controles de Delay V51 -->
+      <h5>Delay</h5>
+      <label for="audioDelayTimeSlider">Delay Time: <span id="audioDelayTimeValue" class="value-display">0.50</span> s</label>
+      <input type="range" id="audioDelayTimeSlider" min="0.01" max="2" step="0.01" value="0.5">
+      <label for="audioDelayFeedbackSlider">Delay Feedback: <span id="audioDelayFeedbackValue" class="value-display">0.3</span></label>
+      <input type="range" id="audioDelayFeedbackSlider" min="0" max="0.95" step="0.01" value="0.3">
+      <label for="audioDelayMixSlider">Delay Mix (Wet/Dry): <span id="audioDelayMixValue" class="value-display">0.0</span></label>
+      <input type="range" id="audioDelayMixSlider" min="0" max="1" step="0.01" value="0">
+      <!-- Fim Controles de Delay -->
+
+      <!-- Controles de Reverb V51 -->
+      <h5>Reverb</h5>
+      <label for="audioReverbMixSlider">Reverb Mix (Wet/Dry): <span id="audioReverbMixValue" class="value-display">0.0</span></label>
+      <input type="range" id="audioReverbMixSlider" min="0" max="1" step="0.01" value="0">
+      <!-- Fim Controles de Reverb -->
+
+      <div class="modal-footer"><p>As configurações de MIDI, Câmera e Áudio são aplicadas e salvas automaticamente.</p></div>
+    </div>
+  </div>
+
+  <!-- Modal de Controle OSC -->
+  <div id="oscControlModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeOscControlModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Painel de Controle OSC</h3>
+      <label for="oscAddressInput">Endereço OSC:</label>
+      <input type="text" id="oscAddressInput" placeholder="/exemplo/endereco 123 'texto'">
+      <label for="oscArgsInput">Argumentos (JSON Array ou separados por espaço):</label>
+      <input type="text" id="oscArgsInput" placeholder='["texto", 123, 0.5]  ou  texto 123 0.5'>
+      <button id="sendTestOSCButton" class="control-button">Enviar Mensagem OSC</button>
+      <hr>
+      <label for="oscLoopDurationInput">Duração do Loop OSC Gravado (ms):</label>
+      <input type="number" id="oscLoopDurationInput" value="5000" min="100" step="100">
+      <hr>
+      <label for="oscLogTextarea">Log de Mensagens OSC (Enviadas/Recebidas):</label>
+      <textarea id="oscLogTextarea" readonly placeholder="Mensagens OSC do painel, loop e UDP aparecerão aqui..."></textarea>
+      <button id="clearOscLogButton" class="control-button">Limpar Log</button>
+      <button id="exportOscLogButton" class="control-button">Exportar Log</button>
+      <div class="modal-footer"><p>Use para testar, controlar ou monitorar OSC.</p></div>
+    </div>
+  </div>
+
+  <video id="video"></video>
+
+  <!-- Modal de Presets de Formas -->
+  <div id="shapePresetModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeShapePresetModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Gerenciador de Presets de Formas</h3>
+      <label for="shapeToPresetSelect">Selecionar Forma para Preset:</label>
+      <select id="shapeToPresetSelect"></select>
+      <label for="presetNameInput">Nome do Preset:</label>
+      <input type="text" id="presetNameInput" placeholder="Ex: Meu Preset Incrível">
+      <div class="button-group">
+        <button id="saveShapePresetButton" class="control-button">Salvar Preset da Forma Atual</button>
+        <button id="loadShapePresetButton" class="control-button">Carregar Preset na Forma Atual</button>
+      </div>
+      <label for="savedPresetsSelect">Presets Salvos:</label>
+      <select id="savedPresetsSelect" size="5"></select>
+      <div class="button-group">
+        <button id="deleteSelectedPresetButton" class="control-button">Deletar Preset Selecionado</button>
+      </div>
+      <hr>
+      <h4>Importar / Exportar Todos os Presets</h4>
+      <div class="button-group">
+        <button id="exportAllPresetsButton" class="control-button">Exportar Todos (JSON)</button>
+        <button id="importAllPresetsButton" class="control-button">Importar (JSON)</button>
+      </div>
+      <input type="file" id="importPresetFileInput" accept=".json" title="Importar arquivo de presets JSON">
+      <div class="modal-footer"><p>Salve e carregue configurações de formas. Presets são salvos localmente.</p></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js?v=51"></script> <!-- Reverted to v51 for stability -->
+  <!-- Scripts da aplicação v57 -->
+  <script src="synth57.js" defer></script>
+  <script src="main57.js" defer></script>
+  <div id="hud">
+    <button id="reconnectOSCButton" class="control-button">Reconnect OSC</button>
+  </div>
+
+  <!-- V49/V55: Right Sidebar for Synthesizer Controls (agora com transição e botão de toggle externo) -->
+  <div id="synthControlsSidebar"> <!-- Classe .open será alternada por JS para mostrar/esconder -->
+    <h4>Controles do Sintetizador</h4>
+    <div class="control-group">
+      <label for="scWaveformSelect">Forma de Onda:</label>
+      <select id="scWaveformSelect">
+        <option value="sine">Sine</option>
+        <option value="square">Square</option>
+        <option value="sawtooth">Sawtooth</option>
+        <option value="triangle">Triangle</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="scMasterVolume">Volume: <span id="scMasterVolumeValue">0.5</span></label>
+      <input type="range" id="scMasterVolume" min="0" max="1" step="0.01" value="0.5">
+    </div>
+    <div class="control-group">
+      <label for="scAttack">Attack: <span id="scAttackValue">0.010</span>s</label>
+      <input type="range" id="scAttack" min="0.001" max="2" step="0.001" value="0.01">
+    </div>
+    <div class="control-group">
+      <label for="scDecay">Decay: <span id="scDecayValue">0.100</span>s</label>
+      <input type="range" id="scDecay" min="0.001" max="2" step="0.001" value="0.1">
+    </div>
+    <div class="control-group">
+      <label for="scSustain">Sustain: <span id="scSustainValue">0.70</span></label>
+      <input type="range" id="scSustain" min="0" max="1" step="0.01" value="0.7">
+    </div>
+    <div class="control-group">
+      <label for="scRelease">Release: <span id="scReleaseValue">0.200</span>s</label>
+      <input type="range" id="scRelease" min="0.001" max="3" step="0.001" value="0.2">
+    </div>
+    <div class="control-group">
+      <label for="scDistortion">Distorção: <span id="scDistortionValue">0</span>%</label>
+      <input type="range" id="scDistortion" min="0" max="100" step="1" value="0">
+    </div>
+    <div class="control-group">
+      <label for="scFilterCutoff">Filtro Cutoff: <span id="scFilterCutoffValue">20000</span> Hz</label>
+      <input type="range" id="scFilterCutoff" min="20" max="20000" step="1" value="20000">
+    </div>
+    <div class="control-group">
+      <label for="scFilterResonance">Filtro Res.: <span id="scFilterResonanceValue">1</span></label>
+      <input type="range" id="scFilterResonance" min="0.1" max="30" step="0.1" value="1"> <!-- Faixa de Q mais usável para UI -->
+    </div>
+    <!-- LFO Controls V51 -->
+    <h4>LFO</h4>
+    <div class="control-group">
+      <label for="scLfoWaveform">LFO Onda:</label>
+      <select id="scLfoWaveform">
+        <option value="sine">Sine</option>
+        <option value="square">Square</option>
+        <option value="sawtooth">Sawtooth</option>
+        <option value="triangle">Triangle</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="scLfoRate">LFO Rate: <span id="scLfoRateValue">5</span> Hz</label>
+      <input type="range" id="scLfoRate" min="0.1" max="20" step="0.1" value="5">
+    </div>
+    <div class="control-group">
+      <label for="scLfoPitchDepth">LFO Pitch Depth: <span id="scLfoPitchDepthValue">0</span> Hz</label>
+      <input type="range" id="scLfoPitchDepth" min="0" max="50" step="0.1" value="0">
+    </div>
+    <div class="control-group">
+      <label for="scLfoFilterDepth">LFO Filtro Depth: <span id="scLfoFilterDepthValue">0</span> Hz</label>
+      <input type="range" id="scLfoFilterDepth" min="0" max="5000" step="10" value="0">
+    </div>
+    <!-- Delay Controls V51 -->
+    <h4>Delay</h4>
+    <div class="control-group">
+      <label for="scDelayTime">Delay Time: <span id="scDelayTimeValue">0.50</span> s</label>
+      <input type="range" id="scDelayTime" min="0.01" max="2" step="0.01" value="0.5">
+    </div>
+    <div class="control-group">
+      <label for="scDelayFeedback">Delay Feedback: <span id="scDelayFeedbackValue">0.3</span></label>
+      <input type="range" id="scDelayFeedback" min="0" max="0.95" step="0.01" value="0.3">
+    </div>
+    <div class="control-group">
+      <label for="scDelayMix">Delay Mix: <span id="scDelayMixValue">0.0</span></label>
+      <input type="range" id="scDelayMix" min="0" max="1" step="0.01" value="0">
+    </div>
+    <!-- Reverb Controls V51 -->
+    <h4>Reverb</h4>
+    <div class="control-group">
+      <label for="scReverbMix">Reverb Mix: <span id="scReverbMixValue">0.0</span></label>
+      <input type="range" id="scReverbMix" min="0" max="1" step="0.01" value="0">
+    </div>
+
+    <!-- V52: BPM Control -->
+    <h4>Arpeggiator BPM</h4>
+    <div class="control-group">
+      <label for="scBPM">BPM: <span id="scBPMValue">120</span></label>
+      <input type="range" id="scBPM" min="30" max="240" step="1" value="120">
+    </div>
+    <!-- Fim V52: BPM Control -->
+
+    <!-- V52: Audio Recording Controls -->
+    <h4>Gravação de Áudio</h4>
+    <div class="control-group">
+      <button id="recordAudioButton" class="control-button">⏺️ Gravar Áudio</button>
+      <button id="pauseAudioButton" class="control-button" disabled>⏸️ Pausar Gravação</button>
+      <button id="saveAudioButton" class="control-button" disabled>💾 Salvar Áudio</button>
+    </div>
+    <!-- Fim V52: Audio Recording Controls -->
+
+  </div>
+
+</body>
+</html>
