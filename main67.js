@@ -1,5 +1,5 @@
 // ==========================================================================
-// MIDI SHAPE MANIPULATOR v66 - main66.js
+// MIDI SHAPE MANIPULATOR v67 - main67.js
 // ==========================================================================
 
 // Declarações globais para audioCtx e simpleSynth, gerenciadas neste arquivo.
@@ -126,7 +126,7 @@ let currentTheme = 'theme-dark';
 const THEME_STORAGE_KEY = 'midiShapeThemeV35'; // Mantendo v35 por compatibilidade se não houver mudanças de tema
 const PRESETS_STORAGE_KEY = 'midiShapePresetsV52';
 let shapePresets = {};
-const APP_SETTINGS_KEY = 'midiShapeManipulatorV66Settings'; // ATUALIZADO para v66
+const APP_SETTINGS_KEY = 'midiShapeManipulatorV67Settings'; // ATUALIZADO para v67
 const ARPEGGIO_SETTINGS_KEY = 'arpeggioSettingsV52'; // Mantido se não houver mudanças
 const CAMERA_DEVICE_ID_KEY = 'midiShapeCameraDeviceIdV52'; // Mantido se não houver mudanças
 
@@ -1416,7 +1416,7 @@ function saveAllPersistentSettings(){
   savePersistentSetting('synthPanelHidden', synthControlsSidebar ? !synthControlsSidebar.classList.contains('open') : true);
   savePersistentSetting('arpPanelHidden', arpeggiatorControlsPanel ? !arpeggiatorControlsPanel.classList.contains('open') : true);
   savePersistentSetting(GESTURE_MAPPING_STORAGE_KEY, gestureMappings);
-  console.log("Configs V66 salvas no localStorage.");
+  console.log("Configs V67 salvas no localStorage."); // Updated version
 }
 
 function loadAllPersistentSettings(){
@@ -1451,7 +1451,7 @@ function loadAllPersistentSettings(){
     gestureMappings = Array(MAX_GESTURE_MAPPINGS).fill(null).map(() => ({ source: 'NONE', target: 'NONE' }));
     savePersistentSetting(GESTURE_MAPPING_STORAGE_KEY, gestureMappings);
   }
-  console.log("Configs V66 carregadas do localStorage.");
+  console.log("Configs V67 carregadas do localStorage."); // Updated version
   return {
     savedMidiOutputId: loadPersistentSetting('midiOutputId',null), savedMidiInputId: loadPersistentSetting('midiInputId',null),
     audioSettings: { waveform: savedWaveform, masterVolume: savedMasterVolume, attack: savedAttack, decay: savedDecay, sustain: savedSustain, release: savedRelease, distortion: savedDistortion, filterCutoff: savedFilterCutoff, filterResonance: savedFilterResonance, lfoWaveform: savedLfoWaveform, lfoRate: savedLfoRate, lfoPitchDepth: savedLfoPitchDepth, lfoFilterDepth: savedLfoFilterDepth, delayTime: savedDelayTime, delayFeedback: savedDelayFeedback, delayMix: savedDelayMix, reverbMix: savedReverbMix }
@@ -1483,8 +1483,8 @@ function updateNoteIntervalValues(newInterval) {
 function populateArpeggioStyleSelect(){ const selectToPopulate = arpPanelStyleSelect || document.getElementById('arpeggioStyleSelect'); if(!selectToPopulate)return; selectToPopulate.innerHTML=''; ARPEGGIO_STYLES.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s.charAt(0).toUpperCase()+s.slice(1).toLowerCase(); selectToPopulate.appendChild(o); }); selectToPopulate.value=currentArpeggioStyle; }
 
 window.addEventListener('DOMContentLoaded', () => {
-    logDebug("DOM Carregado. Iniciando main66.js...");
-    console.log("DOM Carregado. Iniciando main66.js (v66)...");
+    logDebug("DOM Carregado. Iniciando main67.js..."); // Updated version
+    console.log("DOM Carregado. Iniciando main67.js (v67)..."); // Updated version
     detectPlatform(); hasWebGL2 = checkWebGL2Support(); if (!hasWebGL2) displayGlobalError("Aviso: WebGL2 não disponível. Alguns recursos visuais podem ser limitados.", 15000);
     resizeCanvas(); window.addEventListener('resize', resizeCanvas);
     initFallbackShapes();
@@ -1492,18 +1492,18 @@ window.addEventListener('DOMContentLoaded', () => {
     loadTheme(); applyTheme(currentTheme);
     initPresetManager(); setupEventListeners(); initSynthControlsSidebar();
     if (audioCtx && audioCtx.state === 'running') {
-        console.log("AudioContext já estava rodando na inicialização da página (v66).");
-        if (!simpleSynth) { simpleSynth = new SimpleSynth(audioCtx); console.log("SimpleSynth instanciado porque AudioContext já rodava (v66)."); }
+        console.log("AudioContext já estava rodando na inicialização da página (v67)."); // Updated version
+        if (!simpleSynth) { simpleSynth = new SimpleSynth(audioCtx); console.log("SimpleSynth instanciado porque AudioContext já rodava (v67)."); } // Updated version
         if (simpleSynth && audioSettings) {
              Object.keys(audioSettings).forEach(key => {
                 const setterName = `set${key.charAt(0).toUpperCase() + key.slice(1)}`;
                 if (typeof simpleSynth[setterName] === 'function') { simpleSynth[setterName](audioSettings[key]);
                 } else if (key === 'masterVolume' && typeof simpleSynth.setMasterVolume === 'function') { simpleSynth.setMasterVolume(audioSettings[key]); }
             });
-            updateModalSynthControls(); updateSidebarSynthControls(); console.log("Configurações do synth aplicadas (AudioContext já rodava) (v66).");
+            updateModalSynthControls(); updateSidebarSynthControls(); console.log("Configurações do synth aplicadas (AudioContext já rodava) (v67)."); // Updated version
         }
-    } else if (audioCtx && audioCtx.state === 'suspended') { console.log("AudioContext existe mas está suspenso na inicialização. Aguardando clique no botão de áudio. (v66)");
-    } else { console.log("AudioContext não existe ou não está rodando na inicialização. Aguardando clique no botão de áudio. (v66)"); }
+    } else if (audioCtx && audioCtx.state === 'suspended') { console.log("AudioContext existe mas está suspenso na inicialização. Aguardando clique no botão de áudio. (v67)"); // Updated version
+    } else { console.log("AudioContext não existe ou não está rodando na inicialização. Aguardando clique no botão de áudio. (v67)"); } // Updated version
     setupOSC();
     currentCameraDeviceId = localStorage.getItem(CAMERA_DEVICE_ID_KEY) || null; if (currentCameraDeviceId === "null" || currentCameraDeviceId === "undefined") currentCameraDeviceId = null;
     initMidi().then(async () => {
@@ -1521,10 +1521,12 @@ window.addEventListener('DOMContentLoaded', () => {
     if(hudElement && !loadPersistentSetting('hudHidden', false) ) { hudElement.classList.remove('hidden'); if(infoHudButton) { infoHudButton.textContent = "ℹ️ Ocultar HUD"; infoHudButton.classList.add('active'); }
     } else if (hudElement) { hudElement.classList.add('hidden'); if(infoHudButton) { infoHudButton.textContent = "ℹ️ Mostrar HUD"; infoHudButton.classList.remove('active'); } }
     updateHUD(); sendAllGlobalStatesOSC();
-    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v66).\n`;
+    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v67).\n`; // Updated version
     loadPlayPauseState();
-    console.log("Iniciando loop de animação (v66) e finalizando DOMContentLoaded.");
+    console.log("Iniciando loop de animação (v67) e finalizando DOMContentLoaded."); // Updated version
     animationLoop();
+// V67: Syntax error corrected in v66 was the missing closing brace and parenthesis for this DOMContentLoaded event listener.
+// This file (main67.js) now includes that correction.
 });
 
 function animationLoop() {
@@ -1797,5 +1799,6 @@ function loadPlayPauseState() {
     if (savedIsPlaying && audioCtx && audioCtx.state === 'running') { /* Potentially auto-play if desired, currently no-op */ }
     else { isPlaying = false; if (playPauseButton) playPauseButton.innerHTML = "▶️ Play"; if (audioActivityIndicator) audioActivityIndicator.style.backgroundColor = '#555'; }
 }
-// V66: Added missing closing brace and parenthesis for DOMContentLoaded event listener
+// V67: Syntax error corrected in v66 was the missing closing brace and parenthesis for DOMContentLoaded event listener.
+// This file (main67.js) now includes that correction.
 });
