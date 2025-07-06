@@ -2,7 +2,7 @@
 // MIDI SHAPE MANIPULATOR v68 - main68.js
 // ==========================================================================
 
-// Declarações globais para audioCtx e simpleSynth, gerenciadas neste arquivo.
+// === CONFIGURAÇÕES GLOBAIS INICIAIS E ÁUDIO CONTEXT ===
 let audioCtx = null;
 let simpleSynth = null;
 let _internalAudioEnabledMaster = false; // Inicia como false, o usuário deve ativar.
@@ -20,7 +20,8 @@ function logDebug(message, data = null) {
   }
 }
 
-// === GLOBAL VARIABLES & CONSTANTS ===
+// === CONSTANTES E VARIÁVEIS GLOBAIS DE ESTADO ===
+// --- Elementos Principais da UI ---
 const sidebar = document.getElementById('sidebar');
 const sidebarHandle = document.getElementById('sidebarHandle');
 const mainCanvasContainer = document.getElementById('mainCanvasContainer');
@@ -414,6 +415,24 @@ function resizeCanvas() {
 function distance(x1, y1, x2, y2) { return Math.sqrt((x2 - x1)**2 + (y2 - y1)**2); }
 function isTouchingCircle(x, y, cx, cy, r, tolerance = 20) { return Math.abs(distance(x, y, cx, cy) - r) <= tolerance; }
 function getNoteName(midiNote) { if (midiNote < 0 || midiNote > 127) return ""; return `${NOTE_NAMES[midiNote % 12]}${Math.floor(midiNote / 12) - 1}`; }
+
+/**
+ * Atualiza o valor de um elemento slider e o texto de um elemento span associado.
+ * @param {HTMLInputElement} sliderElement - O elemento slider.
+ * @param {HTMLElement} valueElement - O elemento para exibir o valor formatado.
+ * @param {number|string} value - O valor a ser definido.
+ * @param {function} [formatFn=null] - Uma função opcional para formatar o valor para exibição.
+ */
+function updateControlValue(sliderElement, valueElement, value, formatFn = null) {
+    if (sliderElement) {
+        // Para sliders, o valor geralmente é numérico.
+        // Se o valor recebido for string e puder ser convertido, ótimo. Caso contrário, pode dar problema se não for compatível.
+        sliderElement.value = value;
+    }
+    if (valueElement) {
+        valueElement.textContent = formatFn ? formatFn(value) : value;
+    }
+}
 
 // V59: Gerenciador de timers para notas (Garbage Collection)
 const activeNoteTimers = new Set();
@@ -1263,69 +1282,146 @@ function setupEventListeners() {
   // This addresses the "SyntaxError: Unexpected token ')'" at the end of the
   // DOMContentLoaded listener, caused by its '}' incorrectly closing setupEventListeners.
 
+// Garantir que a função setupEventListeners está fechada corretamente.
+// Se a chave já existia, esta mudança pode ser apenas de formatação.
+// Se faltava, ela foi adicionada pela linha contendo "}" acima deste comentário.
+
 function handleSynthControlChange(param, value) {
     if (spectatorModeActive || !simpleSynth) return;
     switch (param) {
-        case 'waveform': simpleSynth.setWaveform(value); if (audioWaveformSelect) audioWaveformSelect.value = value; if (scWaveformSelect) scWaveformSelect.value = value; break;
-        case 'masterVolume': simpleSynth.setMasterVolume(value); if (audioMasterVolumeSlider) audioMasterVolumeSlider.value = value; if (audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = value.toFixed(2); if (scMasterVolumeSlider) scMasterVolumeSlider.value = value; if (scMasterVolumeValue) scMasterVolumeValue.textContent = value.toFixed(2); break;
-        case 'attack': simpleSynth.setAttack(value); if (audioAttackSlider) audioAttackSlider.value = value; if (audioAttackValueSpan) audioAttackValueSpan.textContent = `${value.toFixed(3)}s`; if (scAttackSlider) scAttackSlider.value = value; if (scAttackValue) scAttackValue.textContent = `${value.toFixed(3)}s`; break;
-        case 'decay': simpleSynth.setDecay(value); if (audioDecaySlider) audioDecaySlider.value = value; if (audioDecayValueSpan) audioDecayValueSpan.textContent = `${value.toFixed(3)}s`; if (scDecaySlider) scDecaySlider.value = value; if (scDecayValue) scDecayValue.textContent = `${value.toFixed(3)}s`; break;
-        case 'sustain': simpleSynth.setSustain(value); if (audioSustainSlider) audioSustainSlider.value = value; if (audioSustainValueSpan) audioSustainValueSpan.textContent = value.toFixed(2); if (scSustainSlider) scSustainSlider.value = value; if (scSustainValue) scSustainValue.textContent = value.toFixed(2); break;
-        case 'release': simpleSynth.setRelease(value); if (audioReleaseSlider) audioReleaseSlider.value = value; if (audioReleaseValueSpan) audioReleaseValueSpan.textContent = `${value.toFixed(3)}s`; if (scReleaseSlider) scReleaseSlider.value = value; if (scReleaseValue) scReleaseValue.textContent = `${value.toFixed(3)}s`; break;
-        case 'distortion': simpleSynth.setDistortion(value); if (audioDistortionSlider) audioDistortionSlider.value = value; if (audioDistortionValueSpan) audioDistortionValueSpan.textContent = `${value.toFixed(0)}%`; if (scDistortionSlider) scDistortionSlider.value = value; if (scDistortionValue) scDistortionValue.textContent = `${value.toFixed(0)}%`; break;
-        case 'filterCutoff': simpleSynth.setFilterCutoff(value); if (audioFilterCutoffSlider) audioFilterCutoffSlider.value = value; if (audioFilterCutoffValueSpan) audioFilterCutoffValueSpan.textContent = `${value.toFixed(0)} Hz`; if (scFilterCutoffSlider) scFilterCutoffSlider.value = value; if (scFilterCutoffValue) scFilterCutoffValue.textContent = `${value.toFixed(0)} Hz`; break;
-        case 'filterResonance': simpleSynth.setFilterResonance(value); if (audioFilterResonanceSlider) audioFilterResonanceSlider.value = value; if (audioFilterResonanceValueSpan) audioFilterResonanceValueSpan.textContent = value.toFixed(1); if (scFilterResonanceSlider) scFilterResonanceSlider.value = value; if (scFilterResonanceValue) scFilterResonanceValue.textContent = value.toFixed(1); break;
-        case 'lfoWaveform': simpleSynth.setLfoWaveform(value); if (audioLfoWaveformSelect) audioLfoWaveformSelect.value = value; if (scLfoWaveformSelect) scLfoWaveformSelect.value = value; break;
-        case 'lfoRate': simpleSynth.setLfoRate(value); if (audioLfoRateSlider) audioLfoRateSlider.value = value; if (audioLfoRateValueSpan) audioLfoRateValueSpan.textContent = `${value.toFixed(1)} Hz`; if (scLfoRateSlider) scLfoRateSlider.value = value; if (scLfoRateValue) scLfoRateValue.textContent = `${value.toFixed(1)} Hz`; break;
-        case 'lfoPitchDepth': simpleSynth.setLfoPitchDepth(value); if (audioLfoPitchDepthSlider) audioLfoPitchDepthSlider.value = value; if (audioLfoPitchDepthValueSpan) audioLfoPitchDepthValueSpan.textContent = `${value.toFixed(1)} Hz`; if (scLfoPitchDepthSlider) scLfoPitchDepthSlider.value = value; if (scLfoPitchDepthValue) scLfoPitchDepthValue.textContent = `${value.toFixed(1)} Hz`; break;
-        case 'lfoFilterDepth': simpleSynth.setLfoFilterDepth(value); if (audioLfoFilterDepthSlider) audioLfoFilterDepthSlider.value = value; if (audioLfoFilterDepthValueSpan) audioLfoFilterDepthValueSpan.textContent = `${value.toFixed(0)} Hz`; if (scLfoFilterDepthSlider) scLfoFilterDepthSlider.value = value; if (scLfoFilterDepthValue) scLfoFilterDepthValue.textContent = `${value.toFixed(0)} Hz`; break;
-        case 'delayTime': simpleSynth.setDelayTime(value); if (audioDelayTimeSlider) audioDelayTimeSlider.value = value; if (audioDelayTimeValueSpan) audioDelayTimeValueSpan.textContent = `${value.toFixed(2)} s`; if (scDelayTimeSlider) scDelayTimeSlider.value = value; if (scDelayTimeValue) scDelayTimeValue.textContent = `${value.toFixed(2)} s`; break;
-        case 'delayFeedback': simpleSynth.setDelayFeedback(value); if (audioDelayFeedbackSlider) audioDelayFeedbackSlider.value = value; if (audioDelayFeedbackValueSpan) audioDelayFeedbackValueSpan.textContent = value.toFixed(2); if (scDelayFeedbackSlider) scDelayFeedbackSlider.value = value; if (scDelayFeedbackValue) scDelayFeedbackValue.textContent = value.toFixed(2); break;
-        case 'delayMix': simpleSynth.setDelayMix(value); if (audioDelayMixSlider) audioDelayMixSlider.value = value; if (audioDelayMixValueSpan) audioDelayMixValueSpan.textContent = value.toFixed(2); if (scDelayMixSlider) scDelayMixSlider.value = value; if (scDelayMixValue) scDelayMixValue.textContent = value.toFixed(2); break;
-        case 'reverbMix': simpleSynth.setReverbMix(value); if (audioReverbMixSlider) audioReverbMixSlider.value = value; if (audioReverbMixValueSpan) audioReverbMixValueSpan.textContent = value.toFixed(2); if (scReverbMixSlider) scReverbMixSlider.value = value; if (scReverbMixValue) scReverbMixValue.textContent = value.toFixed(2); break;
+        case 'waveform':
+            simpleSynth.setWaveform(value);
+            if (audioWaveformSelect) audioWaveformSelect.value = value;
+            if (scWaveformSelect) scWaveformSelect.value = value;
+            break;
+        case 'masterVolume':
+            simpleSynth.setMasterVolume(value);
+            updateControlValue(audioMasterVolumeSlider, audioMasterVolumeValueSpan, value, v => v.toFixed(2));
+            updateControlValue(scMasterVolumeSlider, scMasterVolumeValue, value, v => v.toFixed(2));
+            break;
+        case 'attack':
+            simpleSynth.setAttack(value);
+            updateControlValue(audioAttackSlider, audioAttackValueSpan, value, v => `${v.toFixed(3)}s`);
+            updateControlValue(scAttackSlider, scAttackValue, value, v => `${v.toFixed(3)}s`);
+            break;
+        case 'decay':
+            simpleSynth.setDecay(value);
+            updateControlValue(audioDecaySlider, audioDecayValueSpan, value, v => `${v.toFixed(3)}s`);
+            updateControlValue(scDecaySlider, scDecayValue, value, v => `${v.toFixed(3)}s`);
+            break;
+        case 'sustain':
+            simpleSynth.setSustain(value);
+            updateControlValue(audioSustainSlider, audioSustainValueSpan, value, v => v.toFixed(2));
+            updateControlValue(scSustainSlider, scSustainValue, value, v => v.toFixed(2));
+            break;
+        case 'release':
+            simpleSynth.setRelease(value);
+            updateControlValue(audioReleaseSlider, audioReleaseValueSpan, value, v => `${v.toFixed(3)}s`);
+            updateControlValue(scReleaseSlider, scReleaseValue, value, v => `${v.toFixed(3)}s`);
+            break;
+        case 'distortion':
+            simpleSynth.setDistortion(value);
+            updateControlValue(audioDistortionSlider, audioDistortionValueSpan, value, v => `${v.toFixed(0)}%`);
+            updateControlValue(scDistortionSlider, scDistortionValue, value, v => `${v.toFixed(0)}%`);
+            break;
+        case 'filterCutoff':
+            simpleSynth.setFilterCutoff(value);
+            updateControlValue(audioFilterCutoffSlider, audioFilterCutoffValueSpan, value, v => `${v.toFixed(0)} Hz`);
+            updateControlValue(scFilterCutoffSlider, scFilterCutoffValue, value, v => `${v.toFixed(0)} Hz`);
+            break;
+        case 'filterResonance':
+            simpleSynth.setFilterResonance(value);
+            updateControlValue(audioFilterResonanceSlider, audioFilterResonanceValueSpan, value, v => v.toFixed(1));
+            updateControlValue(scFilterResonanceSlider, scFilterResonanceValue, value, v => v.toFixed(1));
+            break;
+        case 'lfoWaveform': // LFO Waveform é um select, não um slider+span numérico típico
+            simpleSynth.setLfoWaveform(value);
+            if (audioLfoWaveformSelect) audioLfoWaveformSelect.value = value;
+            if (scLfoWaveformSelect) scLfoWaveformSelect.value = value;
+            break;
+        case 'lfoRate':
+            simpleSynth.setLfoRate(value);
+            updateControlValue(audioLfoRateSlider, audioLfoRateValueSpan, value, v => `${v.toFixed(1)} Hz`);
+            updateControlValue(scLfoRateSlider, scLfoRateValue, value, v => `${v.toFixed(1)} Hz`);
+            break;
+        case 'lfoPitchDepth':
+            simpleSynth.setLfoPitchDepth(value);
+            updateControlValue(audioLfoPitchDepthSlider, audioLfoPitchDepthValueSpan, value, v => `${v.toFixed(1)} Hz`);
+            updateControlValue(scLfoPitchDepthSlider, scLfoPitchDepthValue, value, v => `${v.toFixed(1)} Hz`);
+            break;
+        case 'lfoFilterDepth':
+            simpleSynth.setLfoFilterDepth(value);
+            updateControlValue(audioLfoFilterDepthSlider, audioLfoFilterDepthValueSpan, value, v => `${v.toFixed(0)} Hz`);
+            updateControlValue(scLfoFilterDepthSlider, scLfoFilterDepthValue, value, v => `${v.toFixed(0)} Hz`);
+            break;
+        case 'delayTime':
+            simpleSynth.setDelayTime(value);
+            updateControlValue(audioDelayTimeSlider, audioDelayTimeValueSpan, value, v => `${v.toFixed(2)} s`);
+            updateControlValue(scDelayTimeSlider, scDelayTimeValue, value, v => `${v.toFixed(2)} s`);
+            break;
+        case 'delayFeedback':
+            simpleSynth.setDelayFeedback(value);
+            updateControlValue(audioDelayFeedbackSlider, audioDelayFeedbackValueSpan, value, v => v.toFixed(2));
+            updateControlValue(scDelayFeedbackSlider, scDelayFeedbackValue, value, v => v.toFixed(2));
+            break;
+        case 'delayMix':
+            simpleSynth.setDelayMix(value);
+            updateControlValue(audioDelayMixSlider, audioDelayMixValueSpan, value, v => v.toFixed(2));
+            updateControlValue(scDelayMixSlider, scDelayMixValue, value, v => v.toFixed(2));
+            break;
+        case 'reverbMix':
+            simpleSynth.setReverbMix(value);
+            updateControlValue(audioReverbMixSlider, audioReverbMixValueSpan, value, v => v.toFixed(2));
+            updateControlValue(scReverbMixSlider, scReverbMixValue, value, v => v.toFixed(2));
+            break;
     }
     saveAllPersistentSettings(); updateHUD();
 }
 
 function updateModalSynthControls() {
     if (!simpleSynth || !settingsModal || settingsModal.style.display !== 'flex') return;
-    if (audioWaveformSelect) audioWaveformSelect.value = simpleSynth.waveform;
-    if (audioMasterVolumeSlider) audioMasterVolumeSlider.value = simpleSynth.masterGainNode.gain.value; if (audioMasterVolumeValueSpan) audioMasterVolumeValueSpan.textContent = simpleSynth.masterGainNode.gain.value.toFixed(2);
-    if (audioAttackSlider) audioAttackSlider.value = simpleSynth.attackTime; if (audioAttackValueSpan) audioAttackValueSpan.textContent = `${simpleSynth.attackTime.toFixed(3)}s`;
-    if (audioDecaySlider) audioDecaySlider.value = simpleSynth.decayTime; if (audioDecayValueSpan) audioDecayValueSpan.textContent = `${simpleSynth.decayTime.toFixed(3)}s`;
-    if (audioSustainSlider) audioSustainSlider.value = simpleSynth.sustainLevel; if (audioSustainValueSpan) audioSustainValueSpan.textContent = simpleSynth.sustainLevel.toFixed(2);
-    if (audioReleaseSlider) audioReleaseSlider.value = simpleSynth.releaseTime; if (audioReleaseValueSpan) audioReleaseValueSpan.textContent = `${simpleSynth.releaseTime.toFixed(3)}s`;
-    if (audioDistortionSlider) audioDistortionSlider.value = simpleSynth.distortionAmount; if (audioDistortionValueSpan) audioDistortionValueSpan.textContent = `${simpleSynth.distortionAmount.toFixed(0)}%`;
-    if (audioFilterCutoffSlider) audioFilterCutoffSlider.value = simpleSynth.filterNode.frequency.value; if (audioFilterCutoffValueSpan) audioFilterCutoffValueSpan.textContent = `${simpleSynth.filterNode.frequency.value.toFixed(0)} Hz`;
-    if (audioFilterResonanceSlider) audioFilterResonanceSlider.value = simpleSynth.filterNode.Q.value; if (audioFilterResonanceValueSpan) audioFilterResonanceValueSpan.textContent = simpleSynth.filterNode.Q.value.toFixed(1);
-    if (audioLfoWaveformSelect) audioLfoWaveformSelect.value = simpleSynth.lfo.type;
-    if (audioLfoRateSlider) audioLfoRateSlider.value = simpleSynth.lfo.frequency.value; if (audioLfoRateValueSpan) audioLfoRateValueSpan.textContent = `${simpleSynth.lfo.frequency.value.toFixed(1)} Hz`;
-    if (audioLfoPitchDepthSlider) audioLfoPitchDepthSlider.value = simpleSynth.lfoGainPitch.gain.value; if (audioLfoPitchDepthValueSpan) audioLfoPitchDepthValueSpan.textContent = `${simpleSynth.lfoGainPitch.gain.value.toFixed(1)} Hz`;
-    if (audioLfoFilterDepthSlider) audioLfoFilterDepthSlider.value = simpleSynth.lfoGainFilter.gain.value; if (audioLfoFilterDepthValueSpan) audioLfoFilterDepthValueSpan.textContent = `${simpleSynth.lfoGainFilter.gain.value.toFixed(0)} Hz`;
-    if (audioDelayTimeSlider) audioDelayTimeSlider.value = simpleSynth.delayNode.delayTime.value; if (audioDelayTimeValueSpan) audioDelayTimeValueSpan.textContent = `${simpleSynth.delayNode.delayTime.value.toFixed(2)} s`;
-    if (audioDelayFeedbackSlider) audioDelayFeedbackSlider.value = simpleSynth.delayFeedbackGain.gain.value; if (audioDelayFeedbackValueSpan) audioDelayFeedbackValueSpan.textContent = simpleSynth.delayFeedbackGain.gain.value.toFixed(2);
-    if (audioDelayMixSlider) audioDelayMixSlider.value = Math.acos(simpleSynth.delayDryGain.gain.value) / (0.5 * Math.PI); if (audioDelayMixValueSpan) audioDelayMixValueSpan.textContent = (Math.acos(simpleSynth.delayDryGain.gain.value) / (0.5 * Math.PI)).toFixed(2);
-    if (audioReverbMixSlider && simpleSynth.reverbDryGain) audioReverbMixSlider.value = Math.acos(simpleSynth.reverbDryGain.gain.value) / (0.5 * Math.PI); if (audioReverbMixValueSpan && simpleSynth.reverbDryGain) audioReverbMixValueSpan.textContent = (Math.acos(simpleSynth.reverbDryGain.gain.value) / (0.5 * Math.PI)).toFixed(2);
+    if (audioWaveformSelect) audioWaveformSelect.value = simpleSynth.waveform; // Select, não slider
+    updateControlValue(audioMasterVolumeSlider, audioMasterVolumeValueSpan, simpleSynth.masterGainNode.gain.value, v => v.toFixed(2));
+    updateControlValue(audioAttackSlider, audioAttackValueSpan, simpleSynth.attackTime, v => `${v.toFixed(3)}s`);
+    updateControlValue(audioDecaySlider, audioDecayValueSpan, simpleSynth.decayTime, v => `${v.toFixed(3)}s`);
+    updateControlValue(audioSustainSlider, audioSustainValueSpan, simpleSynth.sustainLevel, v => v.toFixed(2));
+    updateControlValue(audioReleaseSlider, audioReleaseValueSpan, simpleSynth.releaseTime, v => `${v.toFixed(3)}s`);
+    updateControlValue(audioDistortionSlider, audioDistortionValueSpan, simpleSynth.distortionAmount, v => `${v.toFixed(0)}%`);
+    updateControlValue(audioFilterCutoffSlider, audioFilterCutoffValueSpan, simpleSynth.filterNode.frequency.value, v => `${v.toFixed(0)} Hz`);
+    updateControlValue(audioFilterResonanceSlider, audioFilterResonanceValueSpan, simpleSynth.filterNode.Q.value, v => v.toFixed(1));
+    if (audioLfoWaveformSelect) audioLfoWaveformSelect.value = simpleSynth.lfo.type; // Select
+    updateControlValue(audioLfoRateSlider, audioLfoRateValueSpan, simpleSynth.lfo.frequency.value, v => `${v.toFixed(1)} Hz`);
+    updateControlValue(audioLfoPitchDepthSlider, audioLfoPitchDepthValueSpan, simpleSynth.lfoGainPitch.gain.value, v => `${v.toFixed(1)} Hz`);
+    updateControlValue(audioLfoFilterDepthSlider, audioLfoFilterDepthValueSpan, simpleSynth.lfoGainFilter.gain.value, v => `${v.toFixed(0)} Hz`);
+    updateControlValue(audioDelayTimeSlider, audioDelayTimeValueSpan, simpleSynth.delayNode.delayTime.value, v => `${v.toFixed(2)} s`);
+    updateControlValue(audioDelayFeedbackSlider, audioDelayFeedbackValueSpan, simpleSynth.delayFeedbackGain.gain.value, v => v.toFixed(2));
+    updateControlValue(audioDelayMixSlider, audioDelayMixValueSpan, Math.acos(simpleSynth.delayDryGain.gain.value) / (0.5 * Math.PI), v => v.toFixed(2));
+    if (simpleSynth.reverbDryGain) {
+        updateControlValue(audioReverbMixSlider, audioReverbMixValueSpan, Math.acos(simpleSynth.reverbDryGain.gain.value) / (0.5 * Math.PI), v => v.toFixed(2));
+    }
 }
+
 function updateSidebarSynthControls() {
     if (!simpleSynth || !synthControlsSidebar) return;
-    if (scWaveformSelect) scWaveformSelect.value = simpleSynth.waveform;
-    if (scMasterVolumeSlider) scMasterVolumeSlider.value = simpleSynth.masterGainNode.gain.value; if (scMasterVolumeValue) scMasterVolumeValue.textContent = simpleSynth.masterGainNode.gain.value.toFixed(2);
-    if (scAttackSlider) scAttackSlider.value = simpleSynth.attackTime; if (scAttackValue) scAttackValue.textContent = `${simpleSynth.attackTime.toFixed(3)}s`;
-    if (scDecaySlider) scDecaySlider.value = simpleSynth.decayTime; if (scDecayValue) scDecayValue.textContent = `${simpleSynth.decayTime.toFixed(3)}s`;
-    if (scSustainSlider) scSustainSlider.value = simpleSynth.sustainLevel; if (scSustainValue) scSustainValue.textContent = simpleSynth.sustainLevel.toFixed(2);
-    if (scReleaseSlider) scReleaseSlider.value = simpleSynth.releaseTime; if (scReleaseValue) scReleaseValue.textContent = `${simpleSynth.releaseTime.toFixed(3)}s`;
-    if (scDistortionSlider) scDistortionSlider.value = simpleSynth.distortionAmount; if (scDistortionValue) scDistortionValue.textContent = `${simpleSynth.distortionAmount.toFixed(0)}%`;
-    if (scFilterCutoffSlider) scFilterCutoffSlider.value = simpleSynth.filterNode.frequency.value; if (scFilterCutoffValue) scFilterCutoffValue.textContent = `${simpleSynth.filterNode.frequency.value.toFixed(0)} Hz`;
-    if (scFilterResonanceSlider) scFilterResonanceSlider.value = simpleSynth.filterNode.Q.value; if (scFilterResonanceValue) scFilterResonanceValue.textContent = simpleSynth.filterNode.Q.value.toFixed(1);
-    if (scLfoWaveformSelect) scLfoWaveformSelect.value = simpleSynth.lfo.type;
-    if (scLfoRateSlider) scLfoRateSlider.value = simpleSynth.lfo.frequency.value; if (scLfoRateValue) scLfoRateValue.textContent = `${simpleSynth.lfo.frequency.value.toFixed(1)} Hz`;
-    if (scLfoPitchDepthSlider) scLfoPitchDepthSlider.value = simpleSynth.lfoGainPitch.gain.value; if (scLfoPitchDepthValue) scLfoPitchDepthValue.textContent = `${simpleSynth.lfoGainPitch.gain.value.toFixed(1)} Hz`;
-    if (scLfoFilterDepthSlider) scLfoFilterDepthSlider.value = simpleSynth.lfoGainFilter.gain.value; if (scLfoFilterDepthValue) scLfoFilterDepthValue.textContent = `${simpleSynth.lfoGainFilter.gain.value.toFixed(0)} Hz`;
-    if (scDelayTimeSlider) scDelayTimeSlider.value = simpleSynth.delayNode.delayTime.value; if (scDelayTimeValue) scDelayTimeValue.textContent = `${simpleSynth.delayNode.delayTime.value.toFixed(2)} s`;
-    if (scDelayFeedbackSlider) scDelayFeedbackSlider.value = simpleSynth.delayFeedbackGain.gain.value; if (scDelayFeedbackValue) scDelayFeedbackValue.textContent = simpleSynth.delayFeedbackGain.gain.value.toFixed(2);
-    if (scDelayMixSlider) scDelayMixSlider.value = Math.acos(simpleSynth.delayDryGain.gain.value) / (0.5 * Math.PI); if (scDelayMixValue) scDelayMixValue.textContent = (Math.acos(simpleSynth.delayDryGain.gain.value) / (0.5 * Math.PI)).toFixed(2);
-    if (scReverbMixSlider && simpleSynth.reverbDryGain) scReverbMixSlider.value = Math.acos(simpleSynth.reverbDryGain.gain.value) / (0.5 * Math.PI); if (scReverbMixValue && simpleSynth.reverbDryGain) scReverbMixValue.textContent = (Math.acos(simpleSynth.reverbDryGain.gain.value) / (0.5 * Math.PI)).toFixed(2);
+    if (scWaveformSelect) scWaveformSelect.value = simpleSynth.waveform; // Select
+    updateControlValue(scMasterVolumeSlider, scMasterVolumeValue, simpleSynth.masterGainNode.gain.value, v => v.toFixed(2));
+    updateControlValue(scAttackSlider, scAttackValue, simpleSynth.attackTime, v => `${v.toFixed(3)}s`);
+    updateControlValue(scDecaySlider, scDecayValue, simpleSynth.decayTime, v => `${v.toFixed(3)}s`);
+    updateControlValue(scSustainSlider, scSustainValue, simpleSynth.sustainLevel, v => v.toFixed(2));
+    updateControlValue(scReleaseSlider, scReleaseValue, simpleSynth.releaseTime, v => `${v.toFixed(3)}s`);
+    updateControlValue(scDistortionSlider, scDistortionValue, simpleSynth.distortionAmount, v => `${v.toFixed(0)}%`);
+    updateControlValue(scFilterCutoffSlider, scFilterCutoffValue, simpleSynth.filterNode.frequency.value, v => `${v.toFixed(0)} Hz`);
+    updateControlValue(scFilterResonanceSlider, scFilterResonanceValue, simpleSynth.filterNode.Q.value, v => v.toFixed(1));
+    if (scLfoWaveformSelect) scLfoWaveformSelect.value = simpleSynth.lfo.type; // Select
+    updateControlValue(scLfoRateSlider, scLfoRateValue, simpleSynth.lfo.frequency.value, v => `${v.toFixed(1)} Hz`);
+    updateControlValue(scLfoPitchDepthSlider, scLfoPitchDepthValue, simpleSynth.lfoGainPitch.gain.value, v => `${v.toFixed(1)} Hz`);
+    updateControlValue(scLfoFilterDepthSlider, scLfoFilterDepthValue, simpleSynth.lfoGainFilter.gain.value, v => `${v.toFixed(0)} Hz`);
+    updateControlValue(scDelayTimeSlider, scDelayTimeValue, simpleSynth.delayNode.delayTime.value, v => `${v.toFixed(2)} s`);
+    updateControlValue(scDelayFeedbackSlider, scDelayFeedbackValue, simpleSynth.delayFeedbackGain.gain.value, v => v.toFixed(2));
+    updateControlValue(scDelayMixSlider, scDelayMixValue, Math.acos(simpleSynth.delayDryGain.gain.value) / (0.5 * Math.PI), v => v.toFixed(2));
+    if (simpleSynth.reverbDryGain) {
+        updateControlValue(scReverbMixSlider, scReverbMixValue, Math.acos(simpleSynth.reverbDryGain.gain.value) / (0.5 * Math.PI), v => v.toFixed(2));
+    }
 }
 
 function initSynthControlsSidebar() {
