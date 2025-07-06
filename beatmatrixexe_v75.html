@@ -55,6 +55,9 @@
     .pad.sequencer-column-indicator {
       background-color: #444; /* A slightly lighter gray than default #333 */
     }
+    .pad.sequencer-column-indicator-vertical {
+      background-color: #5e5e00; /* Um amarelo escuro/oliva para diferenciar */
+    }
     #controls-container {
       position: absolute;
       top: 20px;
@@ -152,8 +155,24 @@
     <input type="range" id="colsInput" value="4" min="1" max="16" style="width: 120px;">
   </div>
   <div class="control-group">
-    <label for="padSizeInput">Tam. Célula (px):</label>
-    <input type="number" id="padSizeInput" value="60" min="20" max="100" step="5" style="width: 50px;">
+    <label for="padSizeInput">Tam. Célula: <span id="padSizeValueDisplay">60</span>px</label>
+    <input type="range" id="padSizeInput" value="60" min="20" max="100" step="1" style="width: 120px;">
+  </div>
+
+  <hr style="border-color: #555; margin: 15px 0;">
+
+  <!-- Controles para a Segunda Barra (Vertical) -->
+  <div class="control-group">
+    <button id="play-stop-button-vertical">Play Barra Vert</button>
+    <div id="bpm-display-vertical">BPM Vert: 120</div>
+  </div>
+
+  <div id="horizontalFaderContainerVertical">
+      <svg id="horizontalBpmFaderSVGVertical" width="250" height="60">
+          <rect id="faderTrackVertical" x="10" y="20" width="230" height="10" rx="5" ry="5" fill="url(#faderTrackGradient)" stroke="#505050" stroke-width="1"/>
+          <rect id="faderThumbVertical" x="10" y="15" width="20" height="20" rx="3" ry="3" fill="#FFC107" stroke="#FFA000" stroke-width="1" style="cursor: pointer;"/>
+          <text id="bpmTextDisplayVertical" x="125" y="50" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle">BPM Vert: 120</text>
+      </svg>
   </div>
 
 </div>
@@ -165,7 +184,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-<script src="beatmatrixexe_v74.js"></script> <!-- Changed to new JS file -->
+<script src="beatmatrixexe_v75.js"></script>
 
 </body>
 </html>

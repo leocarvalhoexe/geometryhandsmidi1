@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8">
-  <title>Controlador MIDI Gestual v74</title>
+  <title>Controlador MIDI Gestual v76</title>
   <style>
     body {
       margin: 0;
@@ -53,7 +53,10 @@
       border-color: yellow;
     }
     .pad.sequencer-column-indicator {
-      background-color: #444; /* A slightly lighter gray than default #333 */
+      background-color: #444; /* Indicador da barra principal (horizontal) */
+    }
+    .pad.sequencer-indicator-secondary {
+      background-color: #5e5e00; /* Indicador da barra secundária (cor pode ser mantida ou alterada) */
     }
     #controls-container {
       position: absolute;
@@ -65,16 +68,35 @@
       border-radius: 8px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px; /* Reduzido o gap para tentar acomodar mais controles */
+      width: 300px; /* Aumentar um pouco a largura para os novos controles */
     }
-    #controls-container label, #controls-container button, #controls-container select, #controls-container input {
+    #controls-container label{
+      display: block; /* Faz os labels ocuparem a linha toda antes do input/select */
+      margin-bottom: 2px;
+      font-size: 0.9em;
+    }
+    #controls-container button, #controls-container select, #controls-container input[type="range"], #controls-container input[type="number"] {
       margin-right: 5px;
+      width: calc(100% - 10px); /* Faz os inputs/selects ocuparem a largura disponível */
+      box-sizing: border-box;
+    }
+     #controls-container input[type="number"] {
+      width: 60px; /* Largura específica para o input de número de semitons */
     }
     .control-group {
         display: flex;
+        flex-direction: column; /* Organiza label acima do controle */
+        /* align-items: center; */ /* Removido para permitir que o label fique à esquerda do input se for inline-block */
+        gap: 2px; /* Gap menor dentro do grupo */
+        margin-bottom: 8px; /* Espaço entre grupos de controle */
+    }
+     .control-group-horizontal { /* Novo grupo para manter BPM e botão na mesma linha */
+        display: flex;
+        flex-direction: row;
         align-items: center;
         gap: 5px;
-        margin-bottom: 5px;
+        margin-bottom: 8px;
     }
     #bpm-display {
         margin-left: 10px;
@@ -123,14 +145,14 @@
     <label for="midi-out">MIDI Out:</label>
     <select id="midi-out"></select>
   </div>
-  <div class="control-group">
-    <button id="play-stop-button">Play</button>
-    <div id="bpm-display">BPM: 120</div>
+  <div class="control-group-horizontal"> <!-- Aplicando classe para layout horizontal -->
+    <button id="play-stop-button">Play Barra Prin</button>
+    <div id="bpm-display">BPM Prin: 120</div>
   </div>
 
   <!-- Horizontal BPM Fader -->
   <div id="horizontalFaderContainer">
-      <svg id="horizontalBpmFaderSVG" width="250" height="60"> <!-- Adjusted width -->
+      <svg id="horizontalBpmFaderSVG" width="250" height="60">
           <defs>
               <linearGradient id="faderTrackGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                   <stop offset="0%" style="stop-color:#a0a0a0;stop-opacity:1" />
@@ -152,8 +174,41 @@
     <input type="range" id="colsInput" value="4" min="1" max="16" style="width: 120px;">
   </div>
   <div class="control-group">
-    <label for="padSizeInput">Tam. Célula (px):</label>
-    <input type="number" id="padSizeInput" value="60" min="20" max="100" step="5" style="width: 50px;">
+    <label for="padSizeInput">Tam. Célula: <span id="padSizeValueDisplay">60</span>px</label>
+    <input type="range" id="padSizeInput" value="60" min="20" max="100" step="1" style="width: 120px;">
+  </div>
+
+  <hr style="border-color: #555; margin: 15px 0;">
+
+  <!-- Controles para a Barra Secundária -->
+  <div class="control-group">
+    <label for="secondaryNoteOffsetInput">Offset Semitons 2ª Barra:</label>
+    <input type="number" id="secondaryNoteOffsetInput" value="12"> <!-- Estilo width já definido no CSS geral -->
+  </div>
+  <div class="control-group">
+    <label for="orientationBar2Select">Orientação 2ª Barra:</label>
+    <select id="orientationBar2Select">
+      <option value="vertical" selected>Vertical</option>
+      <option value="horizontal">Horizontal</option>
+    </select>
+  </div>
+  <div class="control-group">
+    <label for="directionBar2Select">Sentido 2ª Barra:</label>
+    <select id="directionBar2Select">
+      <!-- Opções preenchidas por JS -->
+    </select>
+  </div>
+  <div class="control-group-horizontal"> <!-- Aplicando classe para layout horizontal -->
+    <button id="play-stop-button-secondary">Play Barra Sec</button>
+    <div id="bpm-display-secondary">BPM Sec: 120</div>
+  </div>
+
+  <div id="secondaryFaderContainer">
+      <svg id="secondaryBpmFaderSVG" width="250" height="60">
+          <rect id="secondaryFaderTrack" x="10" y="20" width="230" height="10" rx="5" ry="5" fill="url(#faderTrackGradient)" stroke="#505050" stroke-width="1"/>
+          <rect id="secondaryFaderThumb" x="10" y="15" width="20" height="20" rx="3" ry="3" fill="#FFC107" stroke="#FFA000" stroke-width="1" style="cursor: pointer;"/>
+          <text id="secondaryBpmTextDisplay" x="125" y="50" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle">BPM Sec: 120</text>
+      </svg>
   </div>
 
 </div>
@@ -165,7 +220,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-<script src="beatmatrixexe_v74.js"></script> <!-- Changed to new JS file -->
+<script src="beatmatrixexe_v76.js"></script>
 
 </body>
 </html>

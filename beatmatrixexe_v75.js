@@ -2,21 +2,34 @@
 let midiAccess = null;
 let midiOut = null;
 
-// Global Variables for Sequencer
+// Global Variables for Sequencer (Barra Horizontal Principal)
 let isPlaying = false;
 let currentColumn = 0;
-let bpm = 120; // Existing global BPM variable
+let bpm = 120;
 let timerId = null;
 const playStopButton = document.getElementById('play-stop-button');
 
-// =============== BPM Fader Variables and Constants ===============
-const horizontalBpmFaderSVG = document.getElementById('horizontalBpmFaderSVG');
-const faderTrack = document.getElementById('faderTrack'); // Assuming this is for BPM fader
-const faderThumb = document.getElementById('faderThumb'); // Assuming this is for BPM fader
-const bpmTextDisplay = document.getElementById('bpmTextDisplay'); // For BPM fader's text
+// Global Variables for Second Sequencer (Barra Vertical)
+let isPlayingVertical = false;
+let currentColumnVertical = 0; // Será inicializado de forma diferente (ex: currentNumCols - 1)
+let bpmVertical = 120;
+let timerIdVertical = null;
+const playStopButtonVertical = document.getElementById('play-stop-button-vertical');
 
-// --- Horizontal BPM Fader Geometry Constants ---
-// Adjusted to match the new SVG width in beatmatrixexe_v74.html (250px width, track width 230px)
+// =============== BPM Fader Variables and Constants (Barra Horizontal Principal) ===============
+const horizontalBpmFaderSVG = document.getElementById('horizontalBpmFaderSVG');
+const faderTrack = document.getElementById('faderTrack');
+const faderThumb = document.getElementById('faderThumb');
+const bpmTextDisplay = document.getElementById('bpmTextDisplay');
+
+// =============== BPM Fader Variables and Constants (Barra Vertical) ===============
+const horizontalBpmFaderSVGVertical = document.getElementById('horizontalBpmFaderSVGVertical');
+const faderTrackVertical = document.getElementById('faderTrackVertical'); // ID do HTML
+const faderThumbVertical = document.getElementById('faderThumbVertical');   // ID do HTML
+const bpmTextDisplayVertical = document.getElementById('bpmTextDisplayVertical'); // ID do HTML
+
+// --- Fader Geometry Constants (Comum para ambos os faders, assumindo que são idênticos em design) ---
+// Se os faders tiverem tamanhos diferentes, essas constantes precisarão ser duplicadas/ajustadas
 const H_BPM_FADER_SVG_WIDTH = 250;
 const H_BPM_FADER_TRACK_X = 10;
 const H_BPM_FADER_TRACK_WIDTH = 230; // SVG width 250 - 2 * 10 (padding) = 230
@@ -31,16 +44,18 @@ let isGesturingBPM = false; // Retained for potential gesture control on BPM fad
 // =============== Grid Control Elements ===============
 const rowsInput = document.getElementById('rowsInput');
 const colsInput = document.getElementById('colsInput');
-const rowsValueDisplay = document.getElementById('rowsValueDisplay'); // Added for slider value
-const colsValueDisplay = document.getElementById('colsValueDisplay'); // Added for slider value
-const padSizeInput = document.getElementById('padSizeInput');
-const updateMatrixBtn = document.getElementById('updateMatrixBtn');
+const rowsValueDisplay = document.getElementById('rowsValueDisplay');
+const colsValueDisplay = document.getElementById('colsValueDisplay');
+const padSizeInput = document.getElementById('padSizeInput'); // Agora é um range slider
+const padSizeValueDisplay = document.getElementById('padSizeValueDisplay'); // Span para mostrar o valor do tamanho do pad
+// const updateMatrixBtn = document.getElementById('updateMatrixBtn'); // Removido
 
 let currentNumRows = 4; // Default value, will be updated from input
 let currentNumCols = 4; // Default value, will be updated from input
 let currentPadSize = 60; // Default value, will be updated from input
 
 const pads = []; // Global array to store pad elements
+const verticalNoteOffset = 12; // Notas da barra vertical serão 1 oitava acima
 
 // MIDI Access Initialization
 navigator.requestMIDIAccess().then(access => {
@@ -84,6 +99,7 @@ function updateMatrix(numRows, numCols, padSize) {
 
     // Store current sequencer column to attempt to restore it
     const previousSequencerColumn = currentColumn;
+    const previousSequencerColumnVertical = currentColumnVertical; // Store for vertical bar
     const previousNumCols = currentNumCols; // Store previous number of columns
 
     grid.innerHTML = ''; // Clear old pads
@@ -135,18 +151,40 @@ function updateMatrix(numRows, numCols, padSize) {
         }
 
         // Clear any existing column indicators before restarting interval
-        pads.forEach(p => p.classList.remove('sequencer-column-indicator'));
+        pads.forEach(p => {
+            p.classList.remove('sequencer-column-indicator');
+            p.classList.remove('sequencer-column-indicator-vertical');
+        });
 
-        clearInterval(timerId); // Clear existing timer
-        if (currentNumCols > 0) { // Only restart if there are columns
+        clearInterval(timerId); // Clear existing timer for horizontal bar
+        if (currentNumCols > 0) {
             const columnInterval = 60000 / bpm;
             timerId = setInterval(stepSequencer, columnInterval);
-            // Immediately apply indicator to the current (possibly adjusted) column
-            stepSequencer(true); // Pass a flag to prevent advancing column immediately
+            stepSequencer(true); // Apply indicator without advancing
         } else {
-            // If no columns, ensure playback stops and UI updates
             isPlaying = false;
             if (playStopButton) playStopButton.textContent = 'Play';
+        }
+    }
+
+    // Similar logic for the vertical sequencer
+    if (isPlayingVertical) {
+        if (currentNumCols === previousNumCols) {
+            currentColumnVertical = previousSequencerColumnVertical;
+        } else {
+            currentColumnVertical = Math.min(previousSequencerColumnVertical, currentNumCols - 1);
+            if (currentColumnVertical < 0) currentColumnVertical = currentNumCols > 0 ? currentNumCols -1 : 0;
+        }
+
+        // Indicators already cleared above
+        clearInterval(timerIdVertical); // Clear existing timer for vertical bar
+        if (currentNumCols > 0) {
+            const columnIntervalVertical = 60000 / bpmVertical;
+            timerIdVertical = setInterval(stepSequencerVertical, columnIntervalVertical);
+            stepSequencerVertical(true); // Apply indicator without advancing
+        } else {
+            isPlayingVertical = false;
+            if (playStopButtonVertical) playStopButtonVertical.textContent = 'Play Barra Vert';
         }
     }
 }
@@ -219,9 +257,94 @@ function stepSequencer(dontAdvanceColumn = false) { // Added optional parameter
   if (!dontAdvanceColumn) {
     currentColumn = (currentColumn + 1) % currentNumCols;
   }
+
+  // Detecção de Cruzamento (apenas log por enquanto)
+  if (isPlaying && isPlayingVertical && currentColumn === currentColumnVertical) {
+    console.log("Barras cruzadas na coluna:", currentColumn);
+  }
 }
 
-// =============== BPM Fader Functions (Horizontal) ====================
+
+// =============== Sequencer Functions (Vertical - Segunda Barra) ====================
+function togglePlaybackVertical() {
+  isPlayingVertical = !isPlayingVertical;
+  if (playStopButtonVertical) {
+    playStopButtonVertical.textContent = isPlayingVertical ? 'Stop Barra Vert' : 'Play Barra Vert';
+  }
+
+  if (isPlayingVertical) {
+    if (currentNumCols === 0) {
+        console.warn("Sequenciador Vertical iniciado com 0 colunas.");
+        isPlayingVertical = false;
+        if (playStopButtonVertical) playStopButtonVertical.textContent = 'Play Barra Vert';
+        return;
+    }
+    // Iniciar da última coluna para a direita
+    currentColumnVertical = currentNumCols > 0 ? currentNumCols - 1 : 0;
+    stepSequencerVertical(); // Initial step
+    if (timerIdVertical) clearInterval(timerIdVertical);
+    const columnInterval = 60000 / bpmVertical;
+    timerIdVertical = setInterval(stepSequencerVertical, columnInterval);
+  } else {
+    clearInterval(timerIdVertical);
+    pads.forEach(pad => pad.classList.remove('sequencer-column-indicator-vertical'));
+  }
+}
+
+if (playStopButtonVertical) {
+  playStopButtonVertical.addEventListener('click', togglePlaybackVertical);
+}
+
+function stepSequencerVertical(dontAdvanceColumn = false) {
+  if (currentNumCols <= 0 || pads.length === 0) {
+    return;
+  }
+
+  pads.forEach(p => p.classList.remove('sequencer-column-indicator-vertical'));
+
+  if (currentColumnVertical < 0 || currentColumnVertical >= currentNumCols) {
+      currentColumnVertical = currentNumCols > 0 ? currentNumCols - 1 : 0; // Reset se fora dos limites
+  }
+
+  for (let r = 0; r < currentNumRows; r++) {
+    const padIndex = r * currentNumCols + currentColumnVertical;
+    if (pads[padIndex]) {
+      pads[padIndex].classList.add('sequencer-column-indicator-vertical');
+      if (pads[padIndex].classList.contains('active')) {
+        const originalNote = parseInt(pads[padIndex].dataset.note);
+        const verticalNote = originalNote + verticalNoteOffset; // Aplicar offset
+        if (midiOut) {
+          midiOut.send([0x90, verticalNote, 100]); // Note ON com nota ajustada
+          setTimeout(() => {
+            if (midiOut) midiOut.send([0x80, verticalNote, 0]); // Note OFF com nota ajustada
+          }, 100);
+        }
+      }
+    }
+  }
+
+  if (!dontAdvanceColumn) {
+    currentColumnVertical = (currentColumnVertical - 1 + currentNumCols) % currentNumCols; // Movendo da direita para a esquerda
+  }
+
+  // Detecção de Cruzamento (apenas log por enquanto)
+  if (isPlaying && isPlayingVertical && currentColumn === currentColumnVertical) {
+    console.log("Barras cruzadas na coluna:", currentColumnVertical);
+    // Adicionar uma classe de destaque ao(s) pad(s) na interseção?
+    // for (let r = 0; r < currentNumRows; r++) {
+    //   const padIndex = r * currentNumCols + currentColumn;
+    //   if (pads[padIndex]) {
+    //     pads[padIndex].classList.add('intersection-highlight'); // Necessário CSS para esta classe
+    //   }
+    // }
+  } else {
+    // Remover destaque de interseção se não estiverem mais cruzadas
+    // pads.forEach(p => p.classList.remove('intersection-highlight'));
+  }
+}
+
+
+// =============== BPM Fader Functions (Horizontal - Principal) ====================
 function updateBPMVisuals(newBpmValue) {
   let clampedBpm = Math.max(minBPM, Math.min(maxBPM, newBpmValue));
   bpm = clampedBpm;
@@ -231,11 +354,10 @@ function updateBPMVisuals(newBpmValue) {
       mainBpmDisplay.textContent = `BPM: ${Math.round(clampedBpm)}`;
   }
 
-  if (faderThumb && bpmTextDisplay && horizontalBpmFaderSVG) { // Ensure all elements exist
+  if (faderThumb && bpmTextDisplay && horizontalBpmFaderSVG) {
     const normalizedBpm = (maxBPM === minBPM) ? 0 : (clampedBpm - minBPM) / (maxBPM - minBPM);
     const availableTrackWidthForThumb = H_BPM_FADER_TRACK_WIDTH - H_BPM_FADER_THUMB_WIDTH;
     let thumbX = H_BPM_FADER_TRACK_X + normalizedBpm * availableTrackWidthForThumb;
-    // Clamp thumbX to be within the track boundaries
     thumbX = Math.max(H_BPM_FADER_TRACK_X, Math.min(thumbX, H_BPM_FADER_TRACK_X + availableTrackWidthForThumb));
     faderThumb.setAttribute('x', thumbX);
     bpmTextDisplay.textContent = `BPM: ${Math.round(clampedBpm)}`;
@@ -248,6 +370,34 @@ function updateBPMVisuals(newBpmValue) {
   }
 }
 
+// =============== BPM Fader Functions (Vertical - Segunda Barra) ====================
+function updateBPMVerticalVisuals(newBpmValue) {
+  let clampedBpm = Math.max(minBPM, Math.min(maxBPM, newBpmValue));
+  bpmVertical = clampedBpm;
+
+  const mainBpmDisplayVertical = document.getElementById('bpm-display-vertical');
+  if (mainBpmDisplayVertical) {
+      mainBpmDisplayVertical.textContent = `BPM Vert: ${Math.round(clampedBpm)}`;
+  }
+
+  if (faderThumbVertical && bpmTextDisplayVertical && horizontalBpmFaderSVGVertical) {
+    const normalizedBpm = (maxBPM === minBPM) ? 0 : (clampedBpm - minBPM) / (maxBPM - minBPM);
+    const availableTrackWidthForThumb = H_BPM_FADER_TRACK_WIDTH - H_BPM_FADER_THUMB_WIDTH; // Assumindo mesma geometria
+    let thumbX = H_BPM_FADER_TRACK_X + normalizedBpm * availableTrackWidthForThumb;
+    thumbX = Math.max(H_BPM_FADER_TRACK_X, Math.min(thumbX, H_BPM_FADER_TRACK_X + availableTrackWidthForThumb));
+    faderThumbVertical.setAttribute('x', thumbX);
+    bpmTextDisplayVertical.textContent = `BPM Vert: ${Math.round(clampedBpm)}`;
+  }
+
+  if (isPlayingVertical) {
+    clearInterval(timerIdVertical);
+    const columnInterval = 60000 / bpmVertical;
+    timerIdVertical = setInterval(stepSequencerVertical, columnInterval); // Chamar stepSequencerVertical
+  }
+}
+
+
+// --- Helper Function (Comum para ambos os faders) ---
 function calculateValueFromX(svgX, trackX, trackWidth, minValue, maxValue, thumbWidth) {
     let normalizedPosition = (svgX - trackX - (thumbWidth / 2)) / (trackWidth - thumbWidth);
     normalizedPosition = Math.max(0, Math.min(1, normalizedPosition));
@@ -255,10 +405,11 @@ function calculateValueFromX(svgX, trackX, trackWidth, minValue, maxValue, thumb
     return Math.round(value);
 }
 
-// Mouse event handlers for BPM fader
+// Mouse event handlers for BPM fader (Principal)
+let isDraggingBPMPrincipal = false; // Renomeado para evitar conflito
 function horizontalBpmFaderMouseDownHandler(event) {
-    if (!horizontalBpmFaderSVG) return; // Safety check
-    isDraggingBPM = true;
+    if (!horizontalBpmFaderSVG) return;
+    isDraggingBPMPrincipal = true;
     document.body.style.cursor = 'grabbing';
     const svgRect = horizontalBpmFaderSVG.getBoundingClientRect();
     const svgX = event.clientX - svgRect.left;
@@ -269,7 +420,7 @@ function horizontalBpmFaderMouseDownHandler(event) {
 }
 
 function horizontalBpmFaderMouseMoveHandler(event) {
-    if (!isDraggingBPM || !horizontalBpmFaderSVG) return;
+    if (!isDraggingBPMPrincipal || !horizontalBpmFaderSVG) return;
     event.preventDefault();
     const svgRect = horizontalBpmFaderSVG.getBoundingClientRect();
     const svgX = event.clientX - svgRect.left;
@@ -278,53 +429,98 @@ function horizontalBpmFaderMouseMoveHandler(event) {
 }
 
 function horizontalBpmFaderMouseUpHandler() {
-    if (isDraggingBPM) {
-        isDraggingBPM = false;
+    if (isDraggingBPMPrincipal) {
+        isDraggingBPMPrincipal = false;
         document.body.style.cursor = 'default';
         document.removeEventListener('mousemove', horizontalBpmFaderMouseMoveHandler);
         document.removeEventListener('mouseup', horizontalBpmFaderMouseUpHandler);
     }
 }
 
-if (horizontalBpmFaderSVG) { // Check if the BPM fader SVG element exists
+// Mouse event handlers for BPM fader (Vertical)
+let isDraggingBPMVertical = false;
+function horizontalBpmFaderVerticalMouseDownHandler(event) {
+    if (!horizontalBpmFaderSVGVertical) return;
+    isDraggingBPMVertical = true;
+    document.body.style.cursor = 'grabbing';
+    const svgRect = horizontalBpmFaderSVGVertical.getBoundingClientRect();
+    const svgX = event.clientX - svgRect.left;
+    let newBpm = calculateValueFromX(svgX, H_BPM_FADER_TRACK_X, H_BPM_FADER_TRACK_WIDTH, minBPM, maxBPM, H_BPM_FADER_THUMB_WIDTH);
+    updateBPMVerticalVisuals(newBpm);
+    document.addEventListener('mousemove', horizontalBpmFaderVerticalMouseMoveHandler);
+    document.addEventListener('mouseup', horizontalBpmFaderVerticalMouseUpHandler);
+}
+
+function horizontalBpmFaderVerticalMouseMoveHandler(event) {
+    if (!isDraggingBPMVertical || !horizontalBpmFaderSVGVertical) return;
+    event.preventDefault();
+    const svgRect = horizontalBpmFaderSVGVertical.getBoundingClientRect();
+    const svgX = event.clientX - svgRect.left;
+    let newBpm = calculateValueFromX(svgX, H_BPM_FADER_TRACK_X, H_BPM_FADER_TRACK_WIDTH, minBPM, maxBPM, H_BPM_FADER_THUMB_WIDTH);
+    updateBPMVerticalVisuals(newBpm);
+}
+
+function horizontalBpmFaderVerticalMouseUpHandler() {
+    if (isDraggingBPMVertical) {
+        isDraggingBPMVertical = false;
+        document.body.style.cursor = 'default';
+        document.removeEventListener('mousemove', horizontalBpmFaderVerticalMouseMoveHandler);
+        document.removeEventListener('mouseup', horizontalBpmFaderVerticalMouseUpHandler);
+    }
+}
+
+
+if (horizontalBpmFaderSVG) {
     horizontalBpmFaderSVG.addEventListener('mousedown', horizontalBpmFaderMouseDownHandler);
+}
+if (horizontalBpmFaderSVGVertical) {
+    horizontalBpmFaderSVGVertical.addEventListener('mousedown', horizontalBpmFaderVerticalMouseDownHandler);
 }
 
 
 // =============== Initialization and Event Listeners ===============
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize BPM fader visuals
+    // Initialize BPM fader visuals (Principal)
     if (horizontalBpmFaderSVG && faderThumb && bpmTextDisplay) {
-         updateBPMVisuals(bpm); // Initialize with default BPM
+         updateBPMVisuals(bpm);
     } else {
-        // console.warn("BPM Fader elements not all found on DOMContentLoaded.");
+        // console.warn("BPM Fader (Principal) elements not all found on DOMContentLoaded.");
+    }
+    // Initialize BPM fader visuals (Vertical)
+    if (horizontalBpmFaderSVGVertical && faderThumbVertical && bpmTextDisplayVertical) {
+         updateBPMVerticalVisuals(bpmVertical);
+    } else {
+        // console.warn("BPM Fader (Vertical) elements not all found on DOMContentLoaded.");
     }
 
+
     // Set initial values for input fields and matrix
-    if (rowsInput && colsInput && padSizeInput && rowsValueDisplay && colsValueDisplay) {
+    if (rowsInput && colsInput && padSizeInput && rowsValueDisplay && colsValueDisplay && padSizeValueDisplay) {
         rowsInput.value = currentNumRows;
         rowsValueDisplay.textContent = currentNumRows;
         colsInput.value = currentNumCols;
         colsValueDisplay.textContent = currentNumCols;
         padSizeInput.value = currentPadSize;
+        padSizeValueDisplay.textContent = currentPadSize;
+
 
         // Event listeners for sliders to update their display values
         rowsInput.addEventListener('input', () => {
             rowsValueDisplay.textContent = rowsInput.value;
-            currentNumRows = parseInt(rowsInput.value, 10); // Update global variable
+            currentNumRows = parseInt(rowsInput.value, 10);
             updateMatrix(currentNumRows, currentNumCols, padSizeInput.value);
         });
         colsInput.addEventListener('input', () => {
             colsValueDisplay.textContent = colsInput.value;
-            currentNumCols = parseInt(colsInput.value, 10); // Update global variable
+            currentNumCols = parseInt(colsInput.value, 10);
             updateMatrix(currentNumRows, currentNumCols, padSizeInput.value);
         });
 
-        // Event listener for pad size input
+        // Event listener for pad size slider input
         padSizeInput.addEventListener('input', () => {
             const newSize = padSizeInput.value;
-            // Ensure currentNumRows and currentNumCols are up-to-date
-            // They should be, as they are updated by their respective sliders or default values
+            padSizeValueDisplay.textContent = newSize;
+            currentPadSize = parseInt(newSize, 10); // Update global currentPadSize
             updateMatrix(currentNumRows, currentNumCols, newSize);
         });
 
