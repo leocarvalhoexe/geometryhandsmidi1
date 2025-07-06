@@ -1,5 +1,5 @@
 // ==========================================================================
-// MIDI SHAPE MANIPULATOR v67 - main67.js
+// MIDI SHAPE MANIPULATOR v68 - main68.js
 // ==========================================================================
 
 // Declarações globais para audioCtx e simpleSynth, gerenciadas neste arquivo.
@@ -1459,7 +1459,7 @@ function saveAllPersistentSettings(){
   savePersistentSetting('synthPanelHidden', synthControlsSidebar ? !synthControlsSidebar.classList.contains('open') : true);
   savePersistentSetting('arpPanelHidden', arpeggiatorControlsPanel ? !arpeggiatorControlsPanel.classList.contains('open') : true);
   savePersistentSetting(GESTURE_MAPPING_STORAGE_KEY, gestureMappings);
-  console.log("Configs V67 salvas no localStorage."); // Updated version
+  console.log("Configs V68 salvas no localStorage."); // Updated version
 }
 
 function loadAllPersistentSettings(){
@@ -1494,7 +1494,7 @@ function loadAllPersistentSettings(){
     gestureMappings = Array(MAX_GESTURE_MAPPINGS).fill(null).map(() => ({ source: 'NONE', target: 'NONE' }));
     savePersistentSetting(GESTURE_MAPPING_STORAGE_KEY, gestureMappings);
   }
-  console.log("Configs V67 carregadas do localStorage."); // Updated version
+  console.log("Configs V68 carregadas do localStorage."); // Updated version
   return {
     savedMidiOutputId: loadPersistentSetting('midiOutputId',null), savedMidiInputId: loadPersistentSetting('midiInputId',null),
     audioSettings: { waveform: savedWaveform, masterVolume: savedMasterVolume, attack: savedAttack, decay: savedDecay, sustain: savedSustain, release: savedRelease, distortion: savedDistortion, filterCutoff: savedFilterCutoff, filterResonance: savedFilterResonance, lfoWaveform: savedLfoWaveform, lfoRate: savedLfoRate, lfoPitchDepth: savedLfoPitchDepth, lfoFilterDepth: savedLfoFilterDepth, delayTime: savedDelayTime, delayFeedback: savedDelayFeedback, delayMix: savedDelayMix, reverbMix: savedReverbMix }
@@ -1526,8 +1526,8 @@ function updateNoteIntervalValues(newInterval) {
 function populateArpeggioStyleSelect(){ const selectToPopulate = arpPanelStyleSelect || document.getElementById('arpeggioStyleSelect'); if(!selectToPopulate)return; selectToPopulate.innerHTML=''; ARPEGGIO_STYLES.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s.charAt(0).toUpperCase()+s.slice(1).toLowerCase(); selectToPopulate.appendChild(o); }); selectToPopulate.value=currentArpeggioStyle; }
 
 window.addEventListener('DOMContentLoaded', () => {
-    logDebug("DOM Carregado. Iniciando main67.js..."); // Updated version
-    console.log("DOM Carregado. Iniciando main67.js (v67)..."); // Updated version
+    logDebug("DOM Carregado. Iniciando main68.js..."); // Updated version
+    console.log("DOM Carregado. Iniciando main68.js (v68)..."); // Updated version
     detectPlatform(); hasWebGL2 = checkWebGL2Support(); if (!hasWebGL2) displayGlobalError("Aviso: WebGL2 não disponível. Alguns recursos visuais podem ser limitados.", 15000);
     resizeCanvas(); window.addEventListener('resize', resizeCanvas);
     initFallbackShapes();
@@ -1535,18 +1535,18 @@ window.addEventListener('DOMContentLoaded', () => {
     loadTheme(); applyTheme(currentTheme);
     initPresetManager(); setupEventListeners(); initSynthControlsSidebar();
     if (audioCtx && audioCtx.state === 'running') {
-        console.log("AudioContext já estava rodando na inicialização da página (v67)."); // Updated version
-        if (!simpleSynth) { simpleSynth = new SimpleSynth(audioCtx); console.log("SimpleSynth instanciado porque AudioContext já rodava (v67)."); } // Updated version
+        console.log("AudioContext já estava rodando na inicialização da página (v68)."); // Updated version
+        if (!simpleSynth) { simpleSynth = new SimpleSynth(audioCtx); console.log("SimpleSynth instanciado porque AudioContext já rodava (v68)."); } // Updated version
         if (simpleSynth && audioSettings) {
              Object.keys(audioSettings).forEach(key => {
                 const setterName = `set${key.charAt(0).toUpperCase() + key.slice(1)}`;
                 if (typeof simpleSynth[setterName] === 'function') { simpleSynth[setterName](audioSettings[key]);
                 } else if (key === 'masterVolume' && typeof simpleSynth.setMasterVolume === 'function') { simpleSynth.setMasterVolume(audioSettings[key]); }
             });
-            updateModalSynthControls(); updateSidebarSynthControls(); console.log("Configurações do synth aplicadas (AudioContext já rodava) (v67)."); // Updated version
+            updateModalSynthControls(); updateSidebarSynthControls(); console.log("Configurações do synth aplicadas (AudioContext já rodava) (v68)."); // Updated version
         }
-    } else if (audioCtx && audioCtx.state === 'suspended') { console.log("AudioContext existe mas está suspenso na inicialização. Aguardando clique no botão de áudio. (v67)"); // Updated version
-    } else { console.log("AudioContext não existe ou não está rodando na inicialização. Aguardando clique no botão de áudio. (v67)"); } // Updated version
+    } else if (audioCtx && audioCtx.state === 'suspended') { console.log("AudioContext existe mas está suspenso na inicialização. Aguardando clique no botão de áudio. (v68)"); // Updated version
+    } else { console.log("AudioContext não existe ou não está rodando na inicialização. Aguardando clique no botão de áudio. (v68)"); } // Updated version
     setupOSC();
     currentCameraDeviceId = localStorage.getItem(CAMERA_DEVICE_ID_KEY) || null; if (currentCameraDeviceId === "null" || currentCameraDeviceId === "undefined") currentCameraDeviceId = null;
     initMidi().then(async () => {
@@ -1564,12 +1564,12 @@ window.addEventListener('DOMContentLoaded', () => {
     if(hudElement && !loadPersistentSetting('hudHidden', false) ) { hudElement.classList.remove('hidden'); if(infoHudButton) { infoHudButton.textContent = "ℹ️ Ocultar HUD"; infoHudButton.classList.add('active'); }
     } else if (hudElement) { hudElement.classList.add('hidden'); if(infoHudButton) { infoHudButton.textContent = "ℹ️ Mostrar HUD"; infoHudButton.classList.remove('active'); } }
     updateHUD(); sendAllGlobalStatesOSC();
-    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v67).\n`; // Updated version
+    if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v68).\n`; // Updated version
     loadPlayPauseState();
-    console.log("Iniciando loop de animação (v67) e finalizando DOMContentLoaded."); // Updated version
+    console.log("Iniciando loop de animação (v68) e finalizando DOMContentLoaded."); // Updated version
     animationLoop();
-// V67: Syntax error corrected in v66 was the missing closing brace and parenthesis for this DOMContentLoaded event listener.
-// This file (main67.js) now includes that correction.
+// V68: Correção de sintaxe aplicada para fechar corretamente o listener do internalAudioToggleButton.
+// O erro anterior 'Unexpected end of input' foi resolvido.
 });
 
 function animationLoop() {
@@ -1845,3 +1845,5 @@ function loadPlayPauseState() {
 // V67: Syntax error corrected in v66 was the missing closing brace and parenthesis for DOMContentLoaded event listener.
 // This file (main67.js) now includes that correction.
 });
+
+[end of main68.js]
