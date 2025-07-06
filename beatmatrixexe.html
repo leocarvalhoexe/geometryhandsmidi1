@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Controlador MIDI Gestual</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #111;
+      color: white;
+      font-family: sans-serif;
+    }
+    video, canvas {
+      position: absolute;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      transform: scaleX(-1);
+      z-index: 0;
+    }
+    #grid {
+      display: grid;
+      /* grid-template-columns will be set by JS */
+      gap: 10px; /* Consider a smaller gap if pads can be small */
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10;
+    }
+    .pad {
+      /* width and height will be set by JS */
+      background: #333;
+      border: 2px solid #888;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      font-size: 24px;
+      transition: 0.2s;
+    }
+    .pad.active {
+      background: #0f0;
+      border-color: #fff;
+      color: #111;
+      box-shadow: 0 0 20px #0f0;
+    }
+    .pad.highlight {
+      box-shadow: 0 0 10px 5px yellow;
+      border-color: yellow;
+    }
+    .pad.sequencer-column-indicator {
+      background-color: #444; /* A slightly lighter gray than default #333 */
+    }
+    #midi-select {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 20;
+    }
+    #midi-select label {
+      margin-right: 10px;
+    }
+
+    #bpm-fader-container {
+      /* Styles for the container are mostly inline already for layout */
+      /* display: flex; align-items: center; flex-direction: column; margin-top: 10px; */
+      /* No new container-specific styles needed here unless overriding inline */
+    }
+
+    #bpm-fader-svg {
+      /* SVG already has width/height attributes */
+    }
+
+    #bpm-fader-svg .track {
+      stroke: #555;
+      stroke-width: 8;
+      fill: none;
+    }
+
+    #bpm-fader-svg .progress-arc {
+      stroke: #0f0; /* Green, like active pads */
+      stroke-width: 8;
+      fill: none;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.1s linear; /* For smooth animation if using dashoffset */
+    }
+
+    #bpm-fader-svg .knob {
+      fill: #0f0;
+      stroke: #fff;
+      stroke-width: 1;
+      cursor: pointer;
+    }
+
+    #bpm-value-display {
+      /* Inline styles already set: margin-top: 5px; font-size: 14px; color: white; */
+      /* Can add more if needed, e.g., text-align */
+      text-align: center;
+      min-width: 60px; /* Ensure it has some width */
+    }
+
+    /* Optional: Styles for when BPM fader is being interacted with */
+    #bpm-fader-svg .knob:active {
+      fill: #0c0; /* Slightly darker green when active */
+    }
+  </style>
+</head>
+<body>
+
+<div id="midi-select">
+  <label for="midi-out">MIDI Out:</label>
+  <select id="midi-out"></select>
+  <button id="play-stop-button">Play</button>
+  <div id="bpm-display">BPM: 120</div>
+
+  <!-- New Horizontal Fader -->
+  <div id="horizontalFaderContainer" style="text-align: center; margin-top: 10px; margin-bottom: 10px;">
+      <svg id="horizontalBpmFaderSVG" width="300" height="60">
+          <defs>
+              <linearGradient id="faderTrackGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" style="stop-color:#a0a0a0;stop-opacity:1" />
+                  <stop offset="100%" style="stop-color:#e0e0e0;stop-opacity:1" />
+              </linearGradient>
+          </defs>
+          <!-- Fader Track -->
+          <rect id="faderTrack" x="10" y="20" width="280" height="10" rx="5" ry="5" fill="url(#faderTrackGradient)" stroke="#505050" stroke-width="1"/>
+          <!-- Fader Thumb (Draggable Part) -->
+          <rect id="faderThumb" x="10" y="15" width="20" height="20" rx="3" ry="3" fill="#4CAF50" stroke="#388E3C" stroke-width="1" style="cursor: pointer;"/>
+          <!-- BPM Text Display -->
+          <text id="bpmTextDisplay" x="150" y="50" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle">BPM: 120</text>
+      </svg>
+  </div>
+
+  <!-- Old Circular Fader - Commented Out -->
+  <!--
+  <div id="bpm-fader-container" style="margin-top: 10px; display: flex; align-items: center; flex-direction: column;">
+    <label for="bpm-fader-svg" style="margin-bottom: 5px;">BPM Control:</label>
+    <svg id="bpm-fader-svg" width="100" height="100" viewbox="0 0 100 100">
+      <circle class="track" cx="50" cy="50" r="40" />
+      <path id="bpm-fader-arc" class="progress-arc"
+            d="M 50 10 A 40 40 0 0 1 90 50"
+            />
+      <circle id="bpm-fader-knob" class="knob" cx="90" cy="50" r="7" />
+    </svg>
+    <div id="bpm-value-display" style="margin-top: 5px; font-size: 14px; color: white;">120 BPM</div>
+  </div>
+  -->
+</div>
+
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
+<div id="matrixControlFadersContainer" style="position: absolute; top: 150px; left: 20px; z-index: 30; background: rgba(50,50,50,0.8); padding: 10px; border-radius: 5px; display: flex; flex-direction: column; align-items: flex-start;">
+
+    <!-- Rows Fader -->
+    <div class="control-fader-group" style="margin-bottom: 10px;">
+        <svg id="rowsFaderSVG" width="250" height="50">
+            <defs>
+                <linearGradient id="rowsFaderTrackGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:#a0a0a0;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#e0e0e0;stop-opacity:1" />
+                </linearGradient>
+            </defs>
+            <rect id="rowsFaderTrack" x="5" y="15" width="240" height="8" rx="4" ry="4" fill="url(#rowsFaderTrackGradient)" stroke="#505050" stroke-width="0.5"/>
+            <rect id="rowsFaderThumb" x="5" y="10" width="16" height="18" rx="3" ry="3" fill="#3F51B5" stroke="#303F9F" stroke-width="0.5" style="cursor: pointer;"/>
+            <text id="rowsValueDisplay" x="125" y="40" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">Rows: 4</text>
+        </svg>
+    </div>
+
+    <!-- Columns Fader -->
+    <div class="control-fader-group" style="margin-bottom: 10px;">
+        <svg id="colsFaderSVG" width="250" height="50">
+            <defs>
+                 <linearGradient id="colsFaderTrackGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:#a0a0a0;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#e0e0e0;stop-opacity:1" />
+                </linearGradient>
+            </defs>
+            <rect id="colsFaderTrack" x="5" y="15" width="240" height="8" rx="4" ry="4" fill="url(#colsFaderTrackGradient)" stroke="#505050" stroke-width="0.5"/>
+            <rect id="colsFaderThumb" x="5" y="10" width="16" height="18" rx="3" ry="3" fill="#FF9800" stroke="#F57C00" stroke-width="0.5" style="cursor: pointer;"/>
+            <text id="colsValueDisplay" x="125" y="40" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">Cols: 4</text>
+        </svg>
+    </div>
+
+    <!-- Pad Size Fader -->
+    <div class="control-fader-group">
+        <svg id="padSizeFaderSVG" width="250" height="50">
+             <defs>
+                 <linearGradient id="padSizeFaderTrackGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:#a0a0a0;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#e0e0e0;stop-opacity:1" />
+                </linearGradient>
+            </defs>
+            <rect id="padSizeFaderTrack" x="5" y="15" width="240" height="8" rx="4" ry="4" fill="url(#padSizeFaderTrackGradient)" stroke="#505050" stroke-width="0.5"/>
+            <rect id="padSizeFaderThumb" x="5" y="10" width="16" height="18" rx="3" ry="3" fill="#795548" stroke="#5D4037" stroke-width="0.5" style="cursor: pointer;"/>
+            <text id="padSizeValueDisplay" x="125" y="40" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">Size: 60px</text>
+        </svg>
+    </div>
+</div>
+
+<div id="grid"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="main11.js"></script>
+
+</body>
+</html>
