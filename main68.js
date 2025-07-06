@@ -1279,6 +1279,29 @@ function setupEventListeners() {
         });
     }
 
+    // Listener para o botão de toggle do painel do Sintetizador
+    if (toggleSynthPanelButtonFixed && synthControlsSidebar) {
+        const synthPanelInitiallyHidden = loadPersistentSetting('synthPanelHidden', true);
+        if (synthPanelInitiallyHidden) {
+            synthControlsSidebar.classList.remove('open');
+            toggleSynthPanelButtonFixed.classList.remove('active');
+        } else {
+            synthControlsSidebar.classList.add('open');
+            toggleSynthPanelButtonFixed.classList.add('active');
+            updateSidebarSynthControls(); // Atualizar controles se abrir no load
+        }
+        toggleSynthPanelButtonFixed.addEventListener('click', () => {
+            const isOpen = synthControlsSidebar.classList.toggle('open');
+            toggleSynthPanelButtonFixed.classList.toggle('active', isOpen);
+            if (isOpen) {
+                updateSidebarSynthControls(); // Atualiza os valores ao abrir
+            }
+            savePersistentSetting('synthPanelHidden', !isOpen);
+            logOSC("SYSTEM", "Painel Sintetizador Alternado", [isOpen ? "Mostrando" : "Ocultando"]);
+        });
+    }
+
+
     if (arpPanelStyleSelect) arpPanelStyleSelect.addEventListener('change', (e) => { if(spectatorModeActive)return; currentArpeggioStyle = e.target.value; saveArpeggioSettings(); updateHUD(); sendOSCMessage('/global/state/arpeggioStyle', currentArpeggioStyle);});
     if (arpPanelBPMSlider) arpPanelBPMSlider.addEventListener('input', (e) => { if(spectatorModeActive||externalBPM!==null)return; arpeggioBPM = parseInt(e.target.value); updateBPMValues(arpeggioBPM); saveArpeggioSettings(); updateHUD(); sendOSCMessage('/global/state/arpeggioBPM', arpeggioBPM); });
     if (arpPanelNoteIntervalSlider) arpPanelNoteIntervalSlider.addEventListener('input', (e) => { if(spectatorModeActive||externalBPM!==null)return; noteInterval = parseInt(e.target.value); updateNoteIntervalValues(noteInterval); saveArpeggioSettings(); updateHUD(); sendOSCMessage('/global/state/arpeggioBPM', Math.round(arpeggioBPM)); });

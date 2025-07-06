@@ -1074,9 +1074,14 @@
   <script src="synth68.js" defer></script>
   <script src="main68.js" defer></script>
   <div id="hud" aria-live="polite" aria-atomic="true">
-    <button id="playPauseButton" class="control-button" title="Play/Pause Sequencer (Spacebar)">▶️ Play</button>
+    <span id="hudTextContent"></span>
+    <button id="toggleOSCConnectionButton" class="control-button" title="Conectar/Desconectar OSC" style="margin-left: 10px; padding: 5px 8px; font-size: 11px; display: inline-block; width: auto;">📡 Conectar OSC</button>
+    <button id="reconnectOSCButton" class="control-button" title="Tentar Reconectar OSC" style="display: none; margin-left: 5px; padding: 5px 8px; font-size: 11px; width: auto;">Reconectar</button>
+    <!-- O botão playPauseButton e audioActivityIndicator foram movidos para a sidebar, mas podem ser colocados aqui se desejado -->
+    <!-- Se playPauseButton e audioActivityIndicator forem mantidos aqui, adicionar:
+    <button id="playPauseButton" class="control-button" title="Play/Pause Sequencer (Spacebar)" style="margin-left: 10px; padding: 5px 8px; font-size: 11px; display: inline-block; width: auto;">▶️ Play</button>
     <span id="audioActivityIndicator" style="display: inline-block; width: 10px; height: 10px; background-color: #555; border-radius: 50%; margin-left: 5px; transition: background-color 0.3s;"></span>
-    <!-- O botão de reconectar OSC é adicionado/removido dinamicamente pelo JS dentro do HUD -->
+    -->
   </div>
 
   <div id="synthControlsSidebar" aria-label="Controles do Sintetizador">
