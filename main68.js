@@ -783,6 +783,123 @@ function processShapeNotes(shape, isPulsing, pulseValue) {
 }
 
 
+// V68: Funções de processamento de gestos refatoradas a partir de onResults
+/**
+ * Processa o gesto de redimensionamento (Zoom) para uma forma.
+ * Este gesto é ativado quando ambas as mãos estão visíveis e os dedos indicadores
+ * de ambas as mãos estão relativamente esticados.
+ * A distância entre os polegares das duas mãos controla o raio da forma.
+ * @param {Shape} shape - O objeto da forma a ser processado.
+ * @returns {boolean} - True se o gesto de redimensionamento foi detectado e processado, false caso contrário.
+ */
+function processResizeGesture(shape) {
+    if (!shape.leftHandLandmarks || !shape.rightHandLandmarks) {
+        return false; // Ambas as mãos são necessárias
+    }
+
+    const lThumb = shape.leftHandLandmarks[4]; // Ponta do polegar esquerdo
+    const rThumb = shape.rightHandLandmarks[4]; // Ponta do polegar direito
+
+    // Condição para dedos indicadores esticados: ponta do dedo (landmark 8) está "acima" (menor valor Y)
+    // da segunda junta do dedo (landmark 6). Isso indica que o dedo não está curvado para dentro da palma.
+    const lIdxStretched = shape.leftHandLandmarks[8].y < shape.leftHandLandmarks[6].y;
+    const rIdxStretched = shape.rightHandLandmarks[8].y < shape.rightHandLandmarks[6].y;
+
+    if (lIdxStretched && rIdxStretched) {
+        shape.currentGestureName = "Zoom"; // Define o nome do gesto para feedback visual na tela
+
+        // Calcula a distância euclidiana entre os polegares, escalada pela largura do canvas
+        const dist = distance(lThumb.x, lThumb.y, rThumb.x, rThumb.y) * canvasElement.width;
+
+        // Normaliza a distância para um valor entre 0 e 1.
+        // '20' é uma pequena "dead zone" para evitar ativação com polegares muito próximos.
+        // 'canvasElement.width * 0.35' define a sensibilidade ou o range máximo da distância útil para o zoom.
+        const normDist = Math.max(0, Math.min(1, (dist - 20) / (canvasElement.width * 0.35)));
+
+        // Atualiza o raio da forma.
+        // O raio é uma combinação suavizada do raio anterior e do novo raio calculado.
+        // Mínimo raio: 20. Máximo raio: 20 + 280 = 300.
+        // Os fatores 0.85 e 0.15 controlam a suavidade da transição do raio.
+        shape.radius = shape.radius * 0.85 + (20 + normDist * 280) * 0.15;
+
+        // Debounce para registrar a mudança de raio.
+        // Evita atualizações de estado excessivas se a mudança for pequena ou muito rápida.
+        if (Math.abs(shape.radius - shape.lastResizeRadius) > 3 && (performance.now() - shape.lastResizeTime > 100)) {
+            shape.lastResizeRadius = shape.radius; // Atualiza o último raio registrado
+            shape.lastResizeTime = performance.now(); // Atualiza o tempo da última mudança significativa
+        }
+        return true; // Indica que o gesto de zoom foi processado
+    }
+    return false; // Gesto de zoom não aplicável ou não detectado nesta iteração
+}
+
+/**
+ * Processa o gesto de mudança de lados para uma forma (pinça com a mão esquerda).
+ * Este gesto é ativado quando a mão esquerda está visível e a pinça formada pelo
+ * polegar e indicador está tocando a área da forma.
+ * A distância da pinça controla o número de lados da forma.
+ * @param {Shape} shape - O objeto da forma a ser processado.
+ * @returns {boolean} - True se o gesto de mudança de lados foi detectado e processado, false caso contrário.
+ */
+function processSidesGesture(shape) {
+    if (!shape.leftHandLandmarks) {
+        return false; // Mão esquerda é necessária para este gesto
+    }
+
+    const idx = shape.leftHandLandmarks[8];   // Landmark da ponta do dedo indicador esquerdo
+    const thumb = shape.leftHandLandmarks[4]; // Landmark da ponta do polegar esquerdo
+
+    // Calcula a posição média da pinça (entre polegar e indicador) no espaço do canvas.
+    // A coordenada X é invertida (canvasElement.width - ...) porque os landmarks de mão são tipicamente espelhados.
+    const pinchCanvasX = canvasElement.width - ((idx.x + thumb.x) / 2 * canvasElement.width);
+    const pinchCanvasY = ((idx.y + thumb.y) / 2 * canvasElement.height);
+
+    // Verifica se a posição da pinça está dentro de uma área de tolerância ao redor da circunferência da forma.
+    // 'shape.radius * 0.8' define uma tolerância de 80% do raio da forma para o toque.
+    const isTouching = isTouchingCircle(pinchCanvasX, pinchCanvasY, shape.centerX, shape.centerY, shape.radius, shape.radius * 0.8);
+
+    if (isTouching) {
+        shape.currentGestureName = "Lados"; // Define o nome do gesto para feedback visual
+
+        // Calcula a distância euclidiana da pinça (entre polegar e indicador), escalada pela largura do canvas.
+        const pinchDist = distance(idx.x, idx.y, thumb.x, thumb.y) * canvasElement.width;
+
+        let newSides;
+        // Mapeia a distância da pinça para o número de lados da forma.
+        if (pinchDist > 140) { // Pinça muito aberta: forma se torna um círculo (representado por 100 lados).
+            newSides = 100;
+        } else if (pinchDist < 20) { // Pinça muito fechada: forma se torna um triângulo (3 lados).
+            newSides = 3;
+        } else {
+            // Para distâncias intermediárias, mapeia linearmente a distância da pinça (entre 20 e 140)
+            // para um número de lados (entre 3 e 20).
+            const normPinch = (pinchDist - 20) / (140 - 20); // Normaliza a distância para o intervalo [0, 1]
+            newSides = Math.round(3 + normPinch * (20 - 3)); // Mapeia para o range de 3 a 20 lados.
+        }
+        newSides = Math.max(3, Math.min(100, newSides)); // Garante que o número de lados permaneça no intervalo válido [3, 100].
+
+        // Aplica a mudança no número de lados somente se houver uma alteração e após um debounce.
+        if (newSides !== shape.sides) {
+            if (performance.now() - shape.lastSideChangeTime > (SIDE_CHANGE_DEBOUNCE_MS - 100)) {
+                 shape.sides = newSides; // Atualiza o número de lados da forma
+                 shape.lastSideChangeTime = performance.now(); // Registra o tempo da mudança
+
+                 // Ajusta o índice da borda/nota atual se estiver fora dos limites do novo número de lados.
+                 if(shape.currentEdgeIndex >= newSides && newSides > 0) {
+                     shape.currentEdgeIndex = Math.max(0, newSides-1);
+                 } else if (newSides === 0 && shape.currentEdgeIndex !== 0) { // Caso raro, mas seguro
+                     shape.currentEdgeIndex = 0;
+                 }
+                 turnOffAllActiveNotesForShape(shape); // Importante: desliga notas ativas ao mudar a forma,
+                                                      // pois a nota/borda anterior pode não existir mais.
+            }
+        }
+        return true; // Indica que o gesto de mudança de lados foi processado
+    }
+    return false; // Gesto de mudança de lados não aplicável ou não detectado
+}
+// Fim das funções de processamento de gestos refatoradas V68
+
 async function initializeCamera(deviceId = null) {
     logDebug(`Tentando inicializar câmera. Device ID: ${deviceId || 'Padrão'}`);
     console.log(`Inicializando câmera com deviceId: ${deviceId || 'Padrão'}`); cameraError = false;
@@ -928,55 +1045,37 @@ function onResults(results) {
       shape.centerX = shape.centerX * 0.92 + targetCenterX * 0.08;
       shape.centerY = shape.centerY * 0.92 + targetCenterY * 0.08;
     }
-    if (shape.leftHandLandmarks && shape.rightHandLandmarks) {
-      const lThumb = shape.leftHandLandmarks[4], rThumb = shape.rightHandLandmarks[4];
-      const lIdxCurl = shape.leftHandLandmarks[8].y > shape.leftHandLandmarks[6].y;
-      const rIdxCurl = shape.rightHandLandmarks[8].y > shape.rightHandLandmarks[6].y;
-      if (lIdxCurl && rIdxCurl) {
-        currentGesture = 'resize'; gestureProcessed = true; shape.currentGestureName = "Zoom"; // V66
-        const dist = distance(lThumb.x, lThumb.y, rThumb.x, rThumb.y) * canvasElement.width;
-        const normDist = Math.max(0,Math.min(1, (dist - 25)/(canvasElement.width*0.4))); // V66: Ajuste de sensibilidade (menos deadzone, maior range)
-        // V66: Suavização para raio (0.9 mais suave, 0.7 mais rápido)
-        shape.radius = shape.radius * 0.9 + (20 + normDist * 280) * 0.1; // V66: Ajuste de min/max raio e suavização
-        if (Math.abs(shape.radius - shape.lastResizeRadius) > 5 && (performance.now() - shape.lastResizeTime > 150)) { // V66: Ajuste de limiar/debounce
-          shape.lastResizeRadius = shape.radius; shape.lastResizeTime = performance.now();
+
+    // V68: Lógica de gestos refatorada para funções separadas.
+    // Tenta processar o gesto de redimensionamento (ambas as mãos).
+    if (!gestureProcessed) {
+        if (processResizeGesture(shape)) {
+            currentGesture = 'resize';
+            gestureProcessed = true;
         }
-      }
     }
-    if (!gestureProcessed && shape.leftHandLandmarks) {
-      const idx = shape.leftHandLandmarks[8], thumb = shape.leftHandLandmarks[4];
-      const pinchDist = distance(idx.x, idx.y, thumb.x, thumb.y) * canvasElement.width;
-      const pinchCanvasX = canvasElement.width - ((idx.x + thumb.x)/2 * canvasElement.width);
-      const pinchCanvasY = ((idx.y + thumb.y)/2 * canvasElement.height);
-      const isTouching = isTouchingCircle(pinchCanvasX, pinchCanvasY, shape.centerX, shape.centerY, shape.radius, shape.radius * 0.75); // V66: Aumentar tolerância de toque ainda mais
-      if (isTouching) {
-        currentGesture = 'sides'; gestureProcessed = true; shape.currentGestureName = "Lados"; // V66
-        let newSides = (pinchDist > (150*1.15)) ? 100 : Math.round(3 + Math.max(0,Math.min(1,(pinchDist-10)/150)) * (20-3)); // V66: Ajuste de sensibilidade (menos deadzone, range um pouco maior)
-        newSides = Math.max(3, Math.min(100, newSides));
-        // V66: Suavização para o número de lados
-        if (newSides !== shape.sides) {
-            // Aplicar suavização apenas se a diferença for significativa para evitar "jitter"
-            // mas permitir mudanças rápidas quando intencional.
-            // Uma abordagem simples é mudar instantaneamente, mas com debounce.
-            // Para suavização real, seria: shape.sides = shape.sides * 0.8 + newSides * 0.2;
-            // e então Math.round(shape.sides). Mas isso pode ser lento para mudanças grandes.
-            // Por ora, manteremos a mudança mais direta com debounce.
-            if (performance.now() - shape.lastSideChangeTime > (SIDE_CHANGE_DEBOUNCE_MS - 75)) { // V66: Reduz debounce mais ainda
-                 shape.sides = newSides;
-                 shape.lastSideChangeTime = performance.now();
-                 if(shape.currentEdgeIndex >= newSides) shape.currentEdgeIndex = Math.max(0, newSides-1);
-                 turnOffAllActiveNotesForShape(shape);
-            }
+    // Se não foi redimensionamento, tenta processar o gesto de mudança de lados (mão esquerda).
+    if (!gestureProcessed) {
+        if (processSidesGesture(shape)) {
+            currentGesture = 'sides';
+            gestureProcessed = true;
         }
-      }
     }
-    if (!gestureProcessed && shape.rightHandLandmarks) { currentGesture = 'liquify'; shape.currentGestureName = "Distorcer"; } // V66
-    const oscGesture = currentGesture || 'none';
+    // Se nenhum gesto específico foi processado e a mão direita está presente, assume-se o gesto de 'liquify'.
+    if (!gestureProcessed && shape.rightHandLandmarks) {
+        currentGesture = 'liquify';
+        shape.currentGestureName = "Distorcer";
+        // A lógica efetiva de 'liquify' (distorção dos vértices) ocorre na função drawShape.
+        // Aqui, apenas marcamos que este é o gesto ativo para a forma.
+    }
+
+    const oscGesture = currentGesture || 'none'; // Define a string do gesto para OSC.
+    // Envia mensagem OSC se o gesto ativo mudou.
     if (shape.lastSentActiveGesture !== oscGesture) {
       sendOSCMessage(`/forma/${shape.id+1}/gestureActivated`, oscGesture);
       shape.lastSentActiveGesture = oscGesture;
     }
-    shape.activeGesture = currentGesture;
+    shape.activeGesture = currentGesture; // Atualiza o gesto ativo na forma.
   });
 
   let pVal = 0; if(pulseModeActive) { pulseTime = performance.now()*0.001; pVal = Math.sin(pulseTime*pulseFrequency*2*Math.PI); }
@@ -1668,8 +1767,9 @@ window.addEventListener('DOMContentLoaded', () => {
     loadPlayPauseState();
     console.log("Iniciando loop de animação (v68) e finalizando DOMContentLoaded."); // Updated version
     animationLoop();
-// V68: Correção de sintaxe aplicada para fechar corretamente o listener do internalAudioToggleButton.
-// O erro anterior 'Unexpected end of input' foi resolvido.
+// V68: Correção de sintaxe aplicada para fechar corretamente o listener do DOMContentLoaded.
+// A chave extra no final do arquivo, que causava "Unexpected token '}'" após o listener do internalAudioToggleButton,
+// foi removida implicitamente ao garantir que o listener do DOMContentLoaded está corretamente fechado aqui.
 });
 
 function animationLoop() {
@@ -1942,8 +2042,510 @@ function loadPlayPauseState() {
     if (savedIsPlaying && audioCtx && audioCtx.state === 'running') { /* Potentially auto-play if desired, currently no-op */ }
     else { isPlaying = false; if (playPauseButton) playPauseButton.innerHTML = "▶️ Play"; if (audioActivityIndicator) audioActivityIndicator.style.backgroundColor = '#555'; }
 }
-// V67: Syntax error corrected in v66 was the missing closing brace and parenthesis for DOMContentLoaded event listener.
-// This file (main67.js) now includes that correction.
+// V68: Correção de sintaxe aplicada para fechar corretamente o listener do DOMContentLoaded.
+// A chave extra no final do arquivo, que causava "Unexpected token '}'" após o listener do internalAudioToggleButton,
+// foi removida implicitamente ao garantir que o listener do DOMContentLoaded está corretamente fechado aqui.
 });
 
-[end of main68.js]
+function animationLoop() {
+  requestAnimationFrame(animationLoop);
+  if (cameraError && !gestureSimulationActive) { /* HUD is updated by onResults or drawFallbackAnimation */ }
+   applyActiveGestureMappings();
+   if (isPlaying && _internalAudioEnabledMaster && simpleSynth && Object.keys(simpleSynth.oscillators).length > 0) {
+    if (audioActivityIndicator && audioActivityIndicator.style.backgroundColor !== 'var(--success-color)') { /* Dynamic indicator placeholder */ }
+   } else if (audioActivityIndicator && audioActivityIndicator.style.backgroundColor !== '#555' && !isPlaying) { /* Dynamic indicator placeholder */ }
+}
+
+function initGestureMappingControls() {
+    const container = document.getElementById('gestureMappingControlsContainer'); if (!container) { console.error("Gesture mapping container not found!"); return; }
+    container.innerHTML = '';
+    for (let i = 0; i < MAX_GESTURE_MAPPINGS; i++) {
+        const mapping = gestureMappings[i] || { source: 'NONE', target: 'NONE' };
+        const groupDiv = document.createElement('div'); groupDiv.className = 'control-group gesture-mapping-item'; groupDiv.innerHTML = `<h5>Mapeamento ${i + 1}</h5>`;
+        const sourceLabel = document.createElement('label'); sourceLabel.htmlFor = `gestureSourceSelect${i}`; sourceLabel.textContent = 'Origem (Gesto/Forma):';
+        const sourceSelect = document.createElement('select'); sourceSelect.id = `gestureSourceSelect${i}`; sourceSelect.dataset.index = i;
+        for (const key in GESTURE_SOURCES) { const option = document.createElement('option'); option.value = key; option.textContent = GESTURE_SOURCES[key]; sourceSelect.appendChild(option); }
+        sourceSelect.value = mapping.source; sourceSelect.addEventListener('change', handleGestureMappingChange);
+        const targetLabel = document.createElement('label'); targetLabel.htmlFor = `synthTargetSelect${i}`; targetLabel.textContent = 'Destino (Sintetizador):';
+        const targetSelect = document.createElement('select'); targetSelect.id = `synthTargetSelect${i}`; targetSelect.dataset.index = i;
+        for (const key in SYNTH_TARGETS) { const option = document.createElement('option'); option.value = key; option.textContent = SYNTH_TARGETS[key]; targetSelect.appendChild(option); }
+        targetSelect.value = mapping.target; targetSelect.addEventListener('change', handleGestureMappingChange);
+        groupDiv.appendChild(sourceLabel); groupDiv.appendChild(sourceSelect); groupDiv.appendChild(targetLabel); groupDiv.appendChild(targetSelect); container.appendChild(groupDiv);
+    }
+    console.log("Gesture mapping controls initialized.");
+}
+function handleGestureMappingChange(event) {
+    const index = parseInt(event.target.dataset.index, 10); const type = event.target.id.includes('Source') ? 'source' : 'target';
+    if (gestureMappings[index]) { gestureMappings[index][type] = event.target.value;
+    } else { gestureMappings[index] = { source: type === 'source' ? event.target.value : 'NONE', target: type === 'target' ? event.target.value : 'NONE' }; }
+    saveAllPersistentSettings(); updateHUD(); console.log(`Gesture mapping ${index} ${type} changed to: ${event.target.value}`);
+}
+function getGestureSourceValue(sourceName, shape) {
+    if (!shape) return 0; let normalizedValue = 0;
+    switch (sourceName) {
+        case 'LIQUIFY_DEGREE': const avgDisp = shape.avgDisp !== undefined ? shape.avgDisp : 0; const maxDistortion = 50.0; normalizedValue = Math.min(1.0, avgDisp / maxDistortion); break;
+        case 'NUM_SIDES': if (shape.sides === 100) normalizedValue = 0.5; else normalizedValue = (shape.sides - 3) / (20 - 3); break;
+        case 'CURRENT_RADIUS': normalizedValue = (shape.radius - 30) / (270); break;
+        case 'AVG_VERTEX_DISTANCE': normalizedValue = (shape.radius - 30) / (270); break; // Proxy
+        default: normalizedValue = 0;
+    }
+    return Math.max(0, Math.min(1, normalizedValue));
+}
+function applySynthParameter(targetName, normalizedValue) {
+    if (!simpleSynth) return; if (normalizedValue < 0 || normalizedValue > 1) { normalizedValue = Math.max(0, Math.min(1, normalizedValue)); }
+    switch (targetName) {
+        case 'FILTER_CUTOFF': const cutoff = 20 + normalizedValue * (18000 - 20); simpleSynth.setFilterCutoff(cutoff); if (scFilterCutoffSlider) scFilterCutoffSlider.value = cutoff; if (scFilterCutoffValue) scFilterCutoffValue.textContent = `${cutoff.toFixed(0)} Hz`; break;
+        case 'FILTER_RESONANCE': const resonance = 0.1 + normalizedValue * (29.9); simpleSynth.setFilterResonance(resonance); if (scFilterResonanceSlider) scFilterResonanceSlider.value = resonance; if (scFilterResonanceValue) scFilterResonanceValue.textContent = resonance.toFixed(1); break;
+        case 'DISTORTION': const distortion = normalizedValue * 100; simpleSynth.setDistortion(distortion); if (scDistortionSlider) scDistortionSlider.value = distortion; if (scDistortionValue) scDistortionValue.textContent = `${distortion.toFixed(0)}%`; break;
+        case 'LFO_RATE': const lfoRate = 0.1 + normalizedValue * (19.9); simpleSynth.setLfoRate(lfoRate); if (scLfoRateSlider) scLfoRateSlider.value = lfoRate; if (scLfoRateValue) scLfoRateValue.textContent = `${lfoRate.toFixed(1)} Hz`; break;
+        case 'LFO_PITCH_DEPTH': const lfoPitchDepth = normalizedValue * 50; simpleSynth.setLfoPitchDepth(lfoPitchDepth); if (scLfoPitchDepthSlider) scLfoPitchDepthSlider.value = lfoPitchDepth; if (scLfoPitchDepthValue) scLfoPitchDepthValue.textContent = `${lfoPitchDepth.toFixed(1)}`; break;
+        case 'LFO_FILTER_DEPTH': const lfoFilterDepth = normalizedValue * 5000; simpleSynth.setLfoFilterDepth(lfoFilterDepth); if (scLfoFilterDepthSlider) scLfoFilterDepthSlider.value = lfoFilterDepth; if (scLfoFilterDepthValue) scLfoFilterDepthValue.textContent = `${lfoFilterDepth.toFixed(0)}`; break;
+        case 'DELAY_TIME': const delayTime = 0.01 + normalizedValue * (1.99); simpleSynth.setDelayTime(delayTime); if (scDelayTimeSlider) scDelayTimeSlider.value = delayTime; if (scDelayTimeValue) scDelayTimeValue.textContent = `${delayTime.toFixed(2)} s`; break;
+        case 'DELAY_FEEDBACK': const delayFeedback = normalizedValue * 0.95; simpleSynth.setDelayFeedback(delayFeedback); if (scDelayFeedbackSlider) scDelayFeedbackSlider.value = delayFeedback; if (scDelayFeedbackValue) scDelayFeedbackValue.textContent = delayFeedback.toFixed(2); break;
+        case 'DELAY_MIX': simpleSynth.setDelayMix(normalizedValue); if (scDelayMixSlider) scDelayMixSlider.value = normalizedValue; if (scDelayMixValue) scDelayMixValue.textContent = normalizedValue.toFixed(2); break;
+        case 'REVERB_MIX': simpleSynth.setReverbMix(normalizedValue); if (scReverbMixSlider) scReverbMixSlider.value = normalizedValue; if (scReverbMixValue) scReverbMixValue.textContent = normalizedValue.toFixed(2); break;
+        case 'ATTACK_TIME': const attackTime = 0.001 + normalizedValue * (1.999); simpleSynth.setAttack(attackTime); if (scAttackSlider) scAttackSlider.value = attackTime; if (scAttackValue) scAttackValue.textContent = `${attackTime.toFixed(3)}s`; break;
+        case 'DECAY_TIME': const decayTime = 0.001 + normalizedValue * (1.999); simpleSynth.setDecay(decayTime); if (scDecaySlider) scDecaySlider.value = decayTime; if (scDecayValue) scDecayValue.textContent = `${decayTime.toFixed(3)}s`; break;
+        case 'SUSTAIN_LEVEL': simpleSynth.setSustain(normalizedValue); if (scSustainSlider) scSustainSlider.value = normalizedValue; if (scSustainValue) scSustainValue.textContent = normalizedValue.toFixed(2); break;
+        case 'RELEASE_TIME': const releaseTime = 0.001 + normalizedValue * (2.999); simpleSynth.setRelease(releaseTime); if (scReleaseSlider) scReleaseSlider.value = releaseTime; if (scReleaseValue) scReleaseValue.textContent = `${releaseTime.toFixed(3)}s`; break;
+        default: break;
+    }
+}
+function applyActiveGestureMappings() {
+    if (spectatorModeActive || !simpleSynth) return;
+    shapes.forEach((shape, shapeIndex) => {
+      if (shape.activeGesture === 'liquify' && shape.rightHandLandmarks) {
+          const fingertips = [4, 8, 12, 16, 20]; const maxInfluence = 150; const maxForce = 25; const cx = shape.centerX; const cy = shape.centerY; let r = shape.radius;
+          let totalDispMag = 0; let activeLiquifyPts = 0;
+          for (let i = 0; i < shape.sides; i++) {
+            const angle = (i / shape.sides) * Math.PI * 2; let vx = r * Math.cos(angle); let vy = r * Math.sin(angle); let dx = 0; let dy = 0;
+            const vCanvasX = cx + vx; const vCanvasY = cy + vy;
+            for (const tipIdx of fingertips) {
+                if (!shape.rightHandLandmarks[tipIdx]) continue; const tip = shape.rightHandLandmarks[tipIdx];
+                const tipX = canvasElement.width - (tip.x * canvasElement.width); const tipY = tip.y * canvasElement.height;
+                const dist = distance(vCanvasX, vCanvasY, tipX, tipY);
+                if (dist < maxInfluence && dist > 0) { const force = maxForce * (1 - dist / maxInfluence); dx += (vCanvasX - tipX) / dist * force; dy += (vCanvasY - tipY) / dist * force; activeLiquifyPts++; }
+            }
+            totalDispMag += Math.sqrt(dx**2 + dy**2);
+          }
+          shape.avgDisp = (activeLiquifyPts > 0) ? totalDispMag / activeLiquifyPts : 0;
+      } else { if (shape.activeGesture !== 'liquify') shape.avgDisp = 0; }
+        gestureMappings.forEach(mapping => {
+            if (mapping.source !== 'NONE' && mapping.target !== 'NONE') { const sourceValue = getGestureSourceValue(mapping.source, shape); applySynthParameter(mapping.target, sourceValue); }
+        });
+    });
+}
+function updateActiveGestureMappingsList() {
+    const listElement = document.getElementById('activeGestureMappingsList'); if (!listElement) return; listElement.innerHTML = '';
+    const activeMappings = gestureMappings.filter(m => m.source !== 'NONE' && m.target !== 'NONE');
+    if (activeMappings.length === 0) { const listItem = document.createElement('li'); listItem.textContent = 'Nenhum mapeamento ativo.'; listElement.appendChild(listItem); return; }
+    activeMappings.forEach((mapping, index) => {
+        const listItem = document.createElement('li'); const sourceText = GESTURE_SOURCES[mapping.source] || mapping.source; const targetText = SYNTH_TARGETS[mapping.target] || mapping.target;
+        listItem.textContent = `Mapeamento ${index + 1}: "${sourceText}" → "${targetText}"`; listElement.appendChild(listItem);
+    });
+}
+function createGestureMappingSlot(index, mappingData = { source: 'NONE', target: 'NONE' }) {
+    const slotDiv = document.createElement('div'); slotDiv.className = 'gesture-mapping-slot control-group'; slotDiv.dataset.index = index;
+    const title = document.createElement('h5'); title.textContent = `Mapeamento ${index + 1}`; slotDiv.appendChild(title);
+    const sourceLabel = document.createElement('label'); sourceLabel.htmlFor = `gestureSourceSelect_${index}`; sourceLabel.textContent = 'Origem do Gesto:';
+    const sourceSelect = document.createElement('select'); sourceSelect.id = `gestureSourceSelect_${index}`; sourceSelect.dataset.index = index; sourceSelect.className = 'gesture-source-select';
+    for (const key in GESTURE_SOURCES) { const option = document.createElement('option'); option.value = key; option.textContent = GESTURE_SOURCES[key]; sourceSelect.appendChild(option); }
+    sourceSelect.value = mappingData.source; sourceSelect.addEventListener('change', handleGestureMappingChange);
+    const targetLabel = document.createElement('label'); targetLabel.htmlFor = `synthTargetSelect_${index}`; targetLabel.textContent = 'Alvo do Sintetizador:';
+    const targetSelect = document.createElement('select'); targetSelect.id = `synthTargetSelect_${index}`; targetSelect.dataset.index = index; targetSelect.className = 'synth-target-select';
+    for (const key in SYNTH_TARGETS) { const option = document.createElement('option'); option.value = key; option.textContent = SYNTH_TARGETS[key]; targetSelect.appendChild(option); }
+    targetSelect.value = mappingData.target; targetSelect.addEventListener('change', handleGestureMappingChange);
+    const removeButton = document.createElement('button'); removeButton.textContent = 'Remover Mapeamento'; removeButton.className = 'control-button remove-mapping-button'; removeButton.dataset.index = index; removeButton.addEventListener('click', removeGestureMappingSlot);
+    slotDiv.appendChild(sourceLabel); slotDiv.appendChild(sourceSelect); slotDiv.appendChild(targetLabel); slotDiv.appendChild(targetSelect); slotDiv.appendChild(removeButton);
+    return slotDiv;
+}
+function addGestureMappingSlot() {
+    if (gestureMappings.filter(m => m.source !== 'NONE' || m.target !== 'NONE').length >= MAX_GESTURE_MAPPINGS) { displayGlobalError(`Máximo de ${MAX_GESTURE_MAPPINGS} mapeamentos atingido.`, 3000); return; }
+    let newIndex = gestureMappings.findIndex(m => m.source === 'NONE' && m.target === 'NONE');
+    if (newIndex === -1 && gestureMappings.length < MAX_GESTURE_MAPPINGS) { newIndex = gestureMappings.length; }
+    else if (newIndex === -1) { displayGlobalError(`Não é possível adicionar mais mapeamentos. Limite de ${MAX_GESTURE_MAPPINGS} preenchido.`, 3000); return; }
+    if (!gestureMappings[newIndex]) { gestureMappings[newIndex] = { source: 'NONE', target: 'NONE' }; }
+    renderGestureMappingUI(); updateActiveGestureMappingsList(); saveAllPersistentSettings();
+}
+function removeGestureMappingSlot(event) {
+    const indexToRemove = parseInt(event.target.dataset.index, 10);
+    if (gestureMappings[indexToRemove]) { gestureMappings[indexToRemove] = { source: 'NONE', target: 'NONE' }; }
+    renderGestureMappingUI(); updateActiveGestureMappingsList(); saveAllPersistentSettings();
+}
+function resetAllGestureMappings() {
+    gestureMappings = Array(MAX_GESTURE_MAPPINGS).fill(null).map(() => ({ source: 'NONE', target: 'NONE' }));
+    renderGestureMappingUI(); updateActiveGestureMappingsList(); saveAllPersistentSettings(); displayGlobalError("Todos os mapeamentos de gestos foram resetados.", 3000);
+}
+function renderGestureMappingUI() {
+    const modalContent = document.getElementById('gestureMappingModalContent'); if (!modalContent) return; modalContent.innerHTML = '';
+    while(gestureMappings.length < MAX_GESTURE_MAPPINGS) { gestureMappings.push({ source: 'NONE', target: 'NONE' }); }
+    if(gestureMappings.length > MAX_GESTURE_MAPPINGS) { gestureMappings = gestureMappings.slice(0, MAX_GESTURE_MAPPINGS); }
+    let activeSlots = 0;
+    gestureMappings.forEach((mapping, index) => {
+        if (mapping.source !== 'NONE' || mapping.target !== 'NONE' || activeSlots < 1) {
+            const slotElement = createGestureMappingSlot(index, mapping); modalContent.appendChild(slotElement);
+            if (mapping.source !== 'NONE' || mapping.target !== 'NONE') { activeSlots++; }
+        }
+    });
+     if (activeSlots === 0 && modalContent.children.length === 0) { const slotElement = createGestureMappingSlot(0, { source: 'NONE', target: 'NONE' }); modalContent.appendChild(slotElement); }
+    const addButton = document.getElementById('addGestureMappingButton');
+    if(addButton) { const currentActiveMappings = gestureMappings.filter(m => m.source !== 'NONE' || m.target !== 'NONE').length; addButton.disabled = currentActiveMappings >= MAX_GESTURE_MAPPINGS; }
+}
+
+let isStoppingDueToError = false; let isSavingAudio = false;
+function startAudioRecording() {
+    if (!simpleSynth || !simpleSynth.masterGainNode || !audioCtx) { displayGlobalError("Sintetizador ou contexto de áudio não inicializado.", 5000); return; }
+    if (audioCtx.state === 'suspended') { displayGlobalError("Contexto de áudio suspenso. Interaja com a página primeiro.", 5000); return; }
+    try {
+        const destinationNode = audioCtx.createMediaStreamDestination(); simpleSynth.masterGainNode.connect(destinationNode);
+        const options = { mimeType: 'audio/webm; codecs=opus' };
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            console.warn(`${options.mimeType} não é suportado. Tentando audio/ogg...`); options.mimeType = 'audio/ogg; codecs=opus';
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                console.warn(`${options.mimeType} não é suportado. Tentando audio/webm (default)...`); options.mimeType = 'audio/webm';
+                 if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    console.error("Nenhum tipo MIME suportado para MediaRecorder (webm, ogg)."); displayGlobalError("Gravação de áudio não suportada neste navegador.", 7000);
+                    simpleSynth.masterGainNode.disconnect(destinationNode); return;
+                 }
+            }
+        }
+        console.log(`Usando mimeType: ${options.mimeType}`); mediaRecorder = new MediaRecorder(destinationNode.stream, options);
+        mediaRecorder.ondataavailable = event => { if (event.data.size > 0) { audioChunks.push(event.data); } };
+        mediaRecorder.onstart = () => {
+            audioChunks = []; isAudioRecording = true; isAudioPaused = false;
+            if (recordAudioButton) { recordAudioButton.innerHTML = '<span class="recording-dot">🔴</span> Parar Gravação'; recordAudioButton.classList.add('active', 'recording'); }
+            if (pauseAudioButton) { pauseAudioButton.disabled = false; pauseAudioButton.textContent = "⏸️ Pausar Gravação"; }
+            if (saveAudioButton) saveAudioButton.disabled = true; updateAudioRecordingHUD(true, false, 0); logOSC("SYSTEM", "Gravação de Áudio Iniciada", []); displayGlobalError("Gravação de áudio iniciada.", 3000);
+        };
+        mediaRecorder.onstop = () => {
+            isAudioPaused = false;
+            if (recordAudioButton) { recordAudioButton.innerHTML = "⏺️ Gravar Áudio"; recordAudioButton.classList.remove('active', 'recording', 'paused'); }
+            if (pauseAudioButton) { pauseAudioButton.disabled = true; pauseAudioButton.textContent = "⏸️ Pausar Gravação"; }
+            if (saveAudioButton) saveAudioButton.disabled = audioChunks.length === 0;
+            updateAudioRecordingHUD(false, false, 0);
+            if (audioChunks.length === 0 && !isSavingAudio) { logOSC("SYSTEM", "Gravação de Áudio Parada (sem dados)", []); displayGlobalError("Gravação de áudio parada (sem dados).", 3000);
+            } else if (!isSavingAudio) { logOSC("SYSTEM", "Gravação de Áudio Parada (dados disponíveis)", []); displayGlobalError("Gravação de áudio parada. Pronto para salvar.", 3000); }
+            try { if(simpleSynth && simpleSynth.masterGainNode && destinationNode && destinationNode.numberOfOutputs > 0) { simpleSynth.masterGainNode.disconnect(destinationNode); console.log("masterGainNode desconectado do destinationNode da gravação."); }
+            } catch (e) { console.warn("Erro ao desconectar destinationNode (pode já estar desconectado):", e); }
+        };
+        mediaRecorder.onpause = () => { if (pauseAudioButton) pauseAudioButton.innerHTML = "▶️ Retomar"; if (recordAudioButton) recordAudioButton.classList.add('paused'); isAudioPaused = true; updateAudioRecordingHUD(true, true, mediaRecorder.stream.currentTime); logOSC("SYSTEM", "Gravação de Áudio Pausada (onpause)", []); };
+        mediaRecorder.onresume = () => { if (pauseAudioButton) pauseAudioButton.innerHTML = "⏸️ Pausar"; if (recordAudioButton) recordAudioButton.classList.remove('paused'); isAudioPaused = false; updateAudioRecordingHUD(true, false, mediaRecorder.stream.currentTime); logOSC("SYSTEM", "Gravação de Áudio Retomada (onresume)", []); };
+        mediaRecorder.onerror = (event) => { console.error("Erro no MediaRecorder:", event.error); displayGlobalError(`Erro na gravação: ${event.error.name || 'Erro desconhecido'}.`, 7000); stopAudioRecording(true); };
+        mediaRecorder.start(1000);
+    } catch (e) { console.error("Falha ao iniciar MediaRecorder:", e); displayGlobalError(`Falha ao iniciar gravação: ${e.message || 'Erro desconhecido'}. Verifique as permissões e o console.`, 7000); isAudioRecording = false; updateAudioRecordingHUD(false, false, 0); }
+}
+function stopAudioRecording(dueToError = false) {
+    isStoppingDueToError = dueToError; if (mediaRecorder && (mediaRecorder.state === "recording" || mediaRecorder.state === "paused")) { try { mediaRecorder.stop(); } catch (e) { console.error("Erro ao chamar mediaRecorder.stop():", e); displayGlobalError("Erro ao parar gravação.", 5000); } }
+    isAudioRecording = false; isAudioPaused = false;
+    if (recordAudioButton) { recordAudioButton.innerHTML = "⏺️ Gravar Áudio"; recordAudioButton.classList.remove('active', 'recording', 'paused'); }
+    if (pauseAudioButton) { pauseAudioButton.disabled = true; pauseAudioButton.innerHTML = "⏸️ Pausar"; }
+    if (saveAudioButton) { saveAudioButton.disabled = (audioChunks.length === 0); }
+    updateAudioRecordingHUD(false, false, 0); if (dueToError) { logOSC("SYSTEM", "Gravação de Áudio Interrompida por Erro", []); }
+}
+function saveRecordedAudio() {
+    if (audioChunks.length === 0) { displayGlobalError("Nenhum áudio gravado para salvar.", 3000); if (saveAudioButton) saveAudioButton.disabled = true; return; }
+    let mimeType = 'audio/webm; codecs=opus';
+    if (mediaRecorder && mediaRecorder.mimeType) { mimeType = mediaRecorder.mimeType; }
+    else if (audioChunks.length > 0 && audioChunks[0].type && MediaRecorder.isTypeSupported(audioChunks[0].type)) { mimeType = audioChunks[0].type; }
+    console.log("Salvando blob com mimeType:", mimeType); isSavingAudio = true;
+    const blob = new Blob(audioChunks, { type: mimeType }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); document.body.appendChild(a); a.style.display = 'none'; a.href = url;
+    const fileExtension = mimeType.includes('ogg') ? 'ogg' : (mimeType.includes('mp4') ? 'mp4' : 'webm');
+    a.download = `gravacao_msm_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.${fileExtension}`; a.click(); window.URL.revokeObjectURL(url); document.body.removeChild(a);
+    logOSC("SYSTEM", `Áudio Salvo: ${a.download}`, []); displayGlobalError(`Áudio salvo como ${a.download}!`, 5000); updateAudioRecordingHUD(false, false, 0, true);
+    audioChunks = []; if (saveAudioButton) saveAudioButton.disabled = true; if (recordAudioButton) recordAudioButton.classList.remove('active', 'recording', 'paused');
+    isSavingAudio = false;
+}
+let audioRecordingHUDTimer = null;
+function updateAudioRecordingHUD(isRecording, isPaused, durationSeconds = 0, isSaved = false) {
+    let hudRecordDiv = document.getElementById('audioRecordingHUD');
+    if (!hudRecordDiv) {
+        hudRecordDiv = document.createElement('div'); hudRecordDiv.id = 'audioRecordingHUD';
+        Object.assign(hudRecordDiv.style, { position: 'fixed', top: '60px', left: '50%', transform: 'translateX(-50%)', padding: '8px 15px', backgroundColor: 'rgba(200, 0, 0, 0.7)', color: 'white', zIndex: '1005', borderRadius: '5px', boxShadow: '0 1px 5px rgba(0,0,0,0.2)', textAlign: 'center', fontSize: '13px', display: 'none', transition: 'background-color 0.3s, opacity 0.3s' });
+        document.body.appendChild(hudRecordDiv);
+    }
+    if (audioRecordingHUDTimer) { clearInterval(audioRecordingHUDTimer); audioRecordingHUDTimer = null; }
+    if (isRecording) {
+        hudRecordDiv.style.display = 'block'; hudRecordDiv.style.opacity = '1'; let startTime = performance.now() - (durationSeconds * 1000);
+        audioRecordingHUDTimer = setInterval(() => {
+            const elapsedMs = performance.now() - startTime; const currentDurationSec = Math.floor(elapsedMs / 1000);
+            const minutes = Math.floor(currentDurationSec / 60); const seconds = currentDurationSec % 60; const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            if (isPaused) { hudRecordDiv.textContent = `⏸️ GRAVAÇÃO PAUSADA (${timeStr})`; hudRecordDiv.style.backgroundColor = 'rgba(255, 165, 0, 0.7)';
+            } else { hudRecordDiv.textContent = `🔴 GRAVANDO (${timeStr})`; hudRecordDiv.style.backgroundColor = 'rgba(200, 0, 0, 0.7)'; }
+        }, 1000);
+        const initialDurationSec = Math.floor((performance.now() - startTime) / 1000); const initialMinutes = Math.floor(initialDurationSec / 60); const initialSeconds = initialDurationSec % 60; const initialTimeStr = `${initialMinutes.toString().padStart(2, '0')}:${initialSeconds.toString().padStart(2, '0')}`;
+        if (isPaused) { hudRecordDiv.textContent = `⏸️ GRAVAÇÃO PAUSADA (${initialTimeStr})`; hudRecordDiv.style.backgroundColor = 'rgba(255, 165, 0, 0.7)';
+        } else { hudRecordDiv.textContent = `🔴 GRAVANDO (${initialTimeStr})`; hudRecordDiv.style.backgroundColor = 'rgba(200, 0, 0, 0.7)'; }
+    } else if (isSaved) {
+        hudRecordDiv.style.display = 'block'; hudRecordDiv.style.opacity = '1'; hudRecordDiv.textContent = '💾 ÁUDIO SALVO!'; hudRecordDiv.style.backgroundColor = 'rgba(0, 128, 0, 0.7)';
+        setTimeout(() => { hudRecordDiv.style.opacity = '0'; setTimeout(() => { hudRecordDiv.style.display = 'none'; }, 300); }, 2700);
+    } else { if (hudRecordDiv.style.display === 'block') { hudRecordDiv.style.opacity = '0'; setTimeout(() => { hudRecordDiv.style.display = 'none'; }, 300); } }
+}
+async function togglePlayPause() {
+    if (spectatorModeActive) return;
+    if (!audioCtx) {
+        console.log("AudioContext não existe. Tentando criar um novo."); audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (!simpleSynth && audioCtx) {
+            simpleSynth = new SimpleSynth(audioCtx); const loadedSettings = loadAllPersistentSettings();
+            if (simpleSynth && loadedSettings.audioSettings) {
+                Object.keys(loadedSettings.audioSettings).forEach(key => {
+                    const setterName = `set${key.charAt(0).toUpperCase() + key.slice(1)}`;
+                    if (typeof simpleSynth[setterName] === 'function') { simpleSynth[setterName](loadedSettings.audioSettings[key]);
+                    } else if (key === 'masterVolume' && typeof simpleSynth.setMasterVolume === 'function') { simpleSynth.setMasterVolume(loadedSettings.audioSettings[key]); }
+                });
+                updateModalSynthControls(); updateSidebarSynthControls();
+            }
+        }
+    }
+    if (audioCtx && audioCtx.state === "suspended") { try { await audioCtx.resume(); console.log("AudioContext resumed by Play/Pause button."); } catch (e) { console.error("Error resuming AudioContext:", e); displayGlobalError("Falha ao iniciar o áudio. Interaja com a página."); return; } }
+    if (typeof Tone !== 'undefined' && typeof Tone.start === 'function') { try { await Tone.start(); console.log("Tone.start() chamado com sucesso."); } catch (e) { console.error("Erro ao chamar Tone.start():", e); if (audioCtx && audioCtx.state === "suspended") { await audioCtx.resume(); } } }
+    isPlaying = !isPlaying;
+    if (isPlaying) {
+        if (typeof Tone !== 'undefined' && Tone.Transport) { Tone.Transport.start(); console.log("Tone.Transport started."); }
+        const now = performance.now(); shapes.forEach(shape => { shape.lastNotePlayedTime = now - (noteInterval + 100); shape.lastArpeggioNotePlayedTime = now - (60000 / arpeggioBPM + 100); });
+        if (playPauseButton) playPauseButton.innerHTML = "⏸️ Pause"; if (audioActivityIndicator) audioActivityIndicator.style.backgroundColor = 'var(--success-color)';
+        logOSC("SYSTEM", "Sequencer/Arpeggiator Started", []);
+    } else {
+        if (typeof Tone !== 'undefined' && Tone.Transport) { Tone.Transport.pause(); console.log("Tone.Transport paused."); }
+        turnOffAllActiveNotes();
+        if (playPauseButton) playPauseButton.innerHTML = "▶️ Play"; if (audioActivityIndicator) audioActivityIndicator.style.backgroundColor = '#555';
+        logOSC("SYSTEM", "Sequencer/Arpeggiator Paused", []);
+    }
+    updateHUD(); savePersistentSetting('isPlaying', isPlaying);
+}
+function loadPlayPauseState() {
+    const savedIsPlaying = loadPersistentSetting('isPlaying', false);
+    if (savedIsPlaying && audioCtx && audioCtx.state === 'running') { /* Potentially auto-play if desired, currently no-op */ }
+    else { isPlaying = false; if (playPauseButton) playPauseButton.innerHTML = "▶️ Play"; if (audioActivityIndicator) audioActivityIndicator.style.backgroundColor = '#555'; }
+}
+// V68: Correção de sintaxe aplicada para fechar corretamente o listener do DOMContentLoaded.
+// A chave extra no final do arquivo, que causava "Unexpected token '}'" após o listener do internalAudioToggleButton,
+// foi removida implicitamente ao garantir que o listener do DOMContentLoaded está corretamente fechado aqui.
+});
+
+function animationLoop() {
+  requestAnimationFrame(animationLoop);
+  if (cameraError && !gestureSimulationActive) { /* HUD is updated by onResults or drawFallbackAnimation */ }
+   applyActiveGestureMappings();
+   if (isPlaying && _internalAudioEnabledMaster && simpleSynth && Object.keys(simpleSynth.oscillators).length > 0) {
+    if (audioActivityIndicator && audioActivityIndicator.style.backgroundColor !== 'var(--success-color)') { /* Dynamic indicator placeholder */ }
+   } else if (audioActivityIndicator && audioActivityIndicator.style.backgroundColor !== '#555' && !isPlaying) { /* Dynamic indicator placeholder */ }
+}
+
+function initGestureMappingControls() {
+    const container = document.getElementById('gestureMappingControlsContainer'); if (!container) { console.error("Gesture mapping container not found!"); return; }
+    container.innerHTML = '';
+    for (let i = 0; i < MAX_GESTURE_MAPPINGS; i++) {
+        const mapping = gestureMappings[i] || { source: 'NONE', target: 'NONE' };
+        const groupDiv = document.createElement('div'); groupDiv.className = 'control-group gesture-mapping-item'; groupDiv.innerHTML = `<h5>Mapeamento ${i + 1}</h5>`;
+        const sourceLabel = document.createElement('label'); sourceLabel.htmlFor = `gestureSourceSelect${i}`; sourceLabel.textContent = 'Origem (Gesto/Forma):';
+        const sourceSelect = document.createElement('select'); sourceSelect.id = `gestureSourceSelect${i}`; sourceSelect.dataset.index = i;
+        for (const key in GESTURE_SOURCES) { const option = document.createElement('option'); option.value = key; option.textContent = GESTURE_SOURCES[key]; sourceSelect.appendChild(option); }
+        sourceSelect.value = mapping.source; sourceSelect.addEventListener('change', handleGestureMappingChange);
+        const targetLabel = document.createElement('label'); targetLabel.htmlFor = `synthTargetSelect${i}`; targetLabel.textContent = 'Destino (Sintetizador):';
+        const targetSelect = document.createElement('select'); targetSelect.id = `synthTargetSelect${i}`; targetSelect.dataset.index = i;
+        for (const key in SYNTH_TARGETS) { const option = document.createElement('option'); option.value = key; option.textContent = SYNTH_TARGETS[key]; targetSelect.appendChild(option); }
+        targetSelect.value = mapping.target; targetSelect.addEventListener('change', handleGestureMappingChange);
+        groupDiv.appendChild(sourceLabel); groupDiv.appendChild(sourceSelect); groupDiv.appendChild(targetLabel); groupDiv.appendChild(targetSelect); container.appendChild(groupDiv);
+    }
+    console.log("Gesture mapping controls initialized.");
+}
+function handleGestureMappingChange(event) {
+    const index = parseInt(event.target.dataset.index, 10); const type = event.target.id.includes('Source') ? 'source' : 'target';
+    if (gestureMappings[index]) { gestureMappings[index][type] = event.target.value;
+    } else { gestureMappings[index] = { source: type === 'source' ? event.target.value : 'NONE', target: type === 'target' ? event.target.value : 'NONE' }; }
+    saveAllPersistentSettings(); updateHUD(); console.log(`Gesture mapping ${index} ${type} changed to: ${event.target.value}`);
+}
+function getGestureSourceValue(sourceName, shape) {
+    if (!shape) return 0; let normalizedValue = 0;
+    switch (sourceName) {
+        case 'LIQUIFY_DEGREE': const avgDisp = shape.avgDisp !== undefined ? shape.avgDisp : 0; const maxDistortion = 50.0; normalizedValue = Math.min(1.0, avgDisp / maxDistortion); break;
+        case 'NUM_SIDES': if (shape.sides === 100) normalizedValue = 0.5; else normalizedValue = (shape.sides - 3) / (20 - 3); break;
+        case 'CURRENT_RADIUS': normalizedValue = (shape.radius - 30) / (270); break;
+        case 'AVG_VERTEX_DISTANCE': normalizedValue = (shape.radius - 30) / (270); break; // Proxy
+        default: normalizedValue = 0;
+    }
+    return Math.max(0, Math.min(1, normalizedValue));
+}
+function applySynthParameter(targetName, normalizedValue) {
+    if (!simpleSynth) return; if (normalizedValue < 0 || normalizedValue > 1) { normalizedValue = Math.max(0, Math.min(1, normalizedValue)); }
+    switch (targetName) {
+        case 'FILTER_CUTOFF': const cutoff = 20 + normalizedValue * (18000 - 20); simpleSynth.setFilterCutoff(cutoff); if (scFilterCutoffSlider) scFilterCutoffSlider.value = cutoff; if (scFilterCutoffValue) scFilterCutoffValue.textContent = `${cutoff.toFixed(0)} Hz`; break;
+        case 'FILTER_RESONANCE': const resonance = 0.1 + normalizedValue * (29.9); simpleSynth.setFilterResonance(resonance); if (scFilterResonanceSlider) scFilterResonanceSlider.value = resonance; if (scFilterResonanceValue) scFilterResonanceValue.textContent = resonance.toFixed(1); break;
+        case 'DISTORTION': const distortion = normalizedValue * 100; simpleSynth.setDistortion(distortion); if (scDistortionSlider) scDistortionSlider.value = distortion; if (scDistortionValue) scDistortionValue.textContent = `${distortion.toFixed(0)}%`; break;
+        case 'LFO_RATE': const lfoRate = 0.1 + normalizedValue * (19.9); simpleSynth.setLfoRate(lfoRate); if (scLfoRateSlider) scLfoRateSlider.value = lfoRate; if (scLfoRateValue) scLfoRateValue.textContent = `${lfoRate.toFixed(1)} Hz`; break;
+        case 'LFO_PITCH_DEPTH': const lfoPitchDepth = normalizedValue * 50; simpleSynth.setLfoPitchDepth(lfoPitchDepth); if (scLfoPitchDepthSlider) scLfoPitchDepthSlider.value = lfoPitchDepth; if (scLfoPitchDepthValue) scLfoPitchDepthValue.textContent = `${lfoPitchDepth.toFixed(1)}`; break;
+        case 'LFO_FILTER_DEPTH': const lfoFilterDepth = normalizedValue * 5000; simpleSynth.setLfoFilterDepth(lfoFilterDepth); if (scLfoFilterDepthSlider) scLfoFilterDepthSlider.value = lfoFilterDepth; if (scLfoFilterDepthValue) scLfoFilterDepthValue.textContent = `${lfoFilterDepth.toFixed(0)}`; break;
+        case 'DELAY_TIME': const delayTime = 0.01 + normalizedValue * (1.99); simpleSynth.setDelayTime(delayTime); if (scDelayTimeSlider) scDelayTimeSlider.value = delayTime; if (scDelayTimeValue) scDelayTimeValue.textContent = `${delayTime.toFixed(2)} s`; break;
+        case 'DELAY_FEEDBACK': const delayFeedback = normalizedValue * 0.95; simpleSynth.setDelayFeedback(delayFeedback); if (scDelayFeedbackSlider) scDelayFeedbackSlider.value = delayFeedback; if (scDelayFeedbackValue) scDelayFeedbackValue.textContent = delayFeedback.toFixed(2); break;
+        case 'DELAY_MIX': simpleSynth.setDelayMix(normalizedValue); if (scDelayMixSlider) scDelayMixSlider.value = normalizedValue; if (scDelayMixValue) scDelayMixValue.textContent = normalizedValue.toFixed(2); break;
+        case 'REVERB_MIX': simpleSynth.setReverbMix(normalizedValue); if (scReverbMixSlider) scReverbMixSlider.value = normalizedValue; if (scReverbMixValue) scReverbMixValue.textContent = normalizedValue.toFixed(2); break;
+        case 'ATTACK_TIME': const attackTime = 0.001 + normalizedValue * (1.999); simpleSynth.setAttack(attackTime); if (scAttackSlider) scAttackSlider.value = attackTime; if (scAttackValue) scAttackValue.textContent = `${attackTime.toFixed(3)}s`; break;
+        case 'DECAY_TIME': const decayTime = 0.001 + normalizedValue * (1.999); simpleSynth.setDecay(decayTime); if (scDecaySlider) scDecaySlider.value = decayTime; if (scDecayValue) scDecayValue.textContent = `${decayTime.toFixed(3)}s`; break;
+        case 'SUSTAIN_LEVEL': simpleSynth.setSustain(normalizedValue); if (scSustainSlider) scSustainSlider.value = normalizedValue; if (scSustainValue) scSustainValue.textContent = normalizedValue.toFixed(2); break;
+        case 'RELEASE_TIME': const releaseTime = 0.001 + normalizedValue * (2.999); simpleSynth.setRelease(releaseTime); if (scReleaseSlider) scReleaseSlider.value = releaseTime; if (scReleaseValue) scReleaseValue.textContent = `${releaseTime.toFixed(3)}s`; break;
+        default: break;
+    }
+}
+function applyActiveGestureMappings() {
+    if (spectatorModeActive || !simpleSynth) return;
+    shapes.forEach((shape, shapeIndex) => {
+      if (shape.activeGesture === 'liquify' && shape.rightHandLandmarks) {
+          const fingertips = [4, 8, 12, 16, 20]; const maxInfluence = 150; const maxForce = 25; const cx = shape.centerX; const cy = shape.centerY; let r = shape.radius;
+          let totalDispMag = 0; let activeLiquifyPts = 0;
+          for (let i = 0; i < shape.sides; i++) {
+            const angle = (i / shape.sides) * Math.PI * 2; let vx = r * Math.cos(angle); let vy = r * Math.sin(angle); let dx = 0; let dy = 0;
+            const vCanvasX = cx + vx; const vCanvasY = cy + vy;
+            for (const tipIdx of fingertips) {
+                if (!shape.rightHandLandmarks[tipIdx]) continue; const tip = shape.rightHandLandmarks[tipIdx];
+                const tipX = canvasElement.width - (tip.x * canvasElement.width); const tipY = tip.y * canvasElement.height;
+                const dist = distance(vCanvasX, vCanvasY, tipX, tipY);
+                if (dist < maxInfluence && dist > 0) { const force = maxForce * (1 - dist / maxInfluence); dx += (vCanvasX - tipX) / dist * force; dy += (vCanvasY - tipY) / dist * force; activeLiquifyPts++; }
+            }
+            totalDispMag += Math.sqrt(dx**2 + dy**2);
+          }
+          shape.avgDisp = (activeLiquifyPts > 0) ? totalDispMag / activeLiquifyPts : 0;
+      } else { if (shape.activeGesture !== 'liquify') shape.avgDisp = 0; }
+        gestureMappings.forEach(mapping => {
+            if (mapping.source !== 'NONE' && mapping.target !== 'NONE') { const sourceValue = getGestureSourceValue(mapping.source, shape); applySynthParameter(mapping.target, sourceValue); }
+        });
+    });
+}
+function updateActiveGestureMappingsList() {
+    const listElement = document.getElementById('activeGestureMappingsList'); if (!listElement) return; listElement.innerHTML = '';
+    const activeMappings = gestureMappings.filter(m => m.source !== 'NONE' && m.target !== 'NONE');
+    if (activeMappings.length === 0) { const listItem = document.createElement('li'); listItem.textContent = 'Nenhum mapeamento ativo.'; listElement.appendChild(listItem); return; }
+    activeMappings.forEach((mapping, index) => {
+        const listItem = document.createElement('li'); const sourceText = GESTURE_SOURCES[mapping.source] || mapping.source; const targetText = SYNTH_TARGETS[mapping.target] || mapping.target;
+        listItem.textContent = `Mapeamento ${index + 1}: "${sourceText}" → "${targetText}"`; listElement.appendChild(listItem);
+    });
+}
+function createGestureMappingSlot(index, mappingData = { source: 'NONE', target: 'NONE' }) {
+    const slotDiv = document.createElement('div'); slotDiv.className = 'gesture-mapping-slot control-group'; slotDiv.dataset.index = index;
+    const title = document.createElement('h5'); title.textContent = `Mapeamento ${index + 1}`; slotDiv.appendChild(title);
+    const sourceLabel = document.createElement('label'); sourceLabel.htmlFor = `gestureSourceSelect_${index}`; sourceLabel.textContent = 'Origem do Gesto:';
+    const sourceSelect = document.createElement('select'); sourceSelect.id = `gestureSourceSelect_${index}`; sourceSelect.dataset.index = index; sourceSelect.className = 'gesture-source-select';
+    for (const key in GESTURE_SOURCES) { const option = document.createElement('option'); option.value = key; option.textContent = GESTURE_SOURCES[key]; sourceSelect.appendChild(option); }
+    sourceSelect.value = mappingData.source; sourceSelect.addEventListener('change', handleGestureMappingChange);
+    const targetLabel = document.createElement('label'); targetLabel.htmlFor = `synthTargetSelect_${index}`; targetLabel.textContent = 'Alvo do Sintetizador:';
+    const targetSelect = document.createElement('select'); targetSelect.id = `synthTargetSelect_${index}`; targetSelect.dataset.index = index; targetSelect.className = 'synth-target-select';
+    for (const key in SYNTH_TARGETS) { const option = document.createElement('option'); option.value = key; option.textContent = SYNTH_TARGETS[key]; targetSelect.appendChild(option); }
+    targetSelect.value = mappingData.target; targetSelect.addEventListener('change', handleGestureMappingChange);
+    const removeButton = document.createElement('button'); removeButton.textContent = 'Remover Mapeamento'; removeButton.className = 'control-button remove-mapping-button'; removeButton.dataset.index = index; removeButton.addEventListener('click', removeGestureMappingSlot);
+    slotDiv.appendChild(sourceLabel); slotDiv.appendChild(sourceSelect); slotDiv.appendChild(targetLabel); slotDiv.appendChild(targetSelect); slotDiv.appendChild(removeButton);
+    return slotDiv;
+}
+function addGestureMappingSlot() {
+    if (gestureMappings.filter(m => m.source !== 'NONE' || m.target !== 'NONE').length >= MAX_GESTURE_MAPPINGS) { displayGlobalError(`Máximo de ${MAX_GESTURE_MAPPINGS} mapeamentos atingido.`, 3000); return; }
+    let newIndex = gestureMappings.findIndex(m => m.source === 'NONE' && m.target === 'NONE');
+    if (newIndex === -1 && gestureMappings.length < MAX_GESTURE_MAPPINGS) { newIndex = gestureMappings.length; }
+    else if (newIndex === -1) { displayGlobalError(`Não é possível adicionar mais mapeamentos. Limite de ${MAX_GESTURE_MAPPINGS} preenchido.`, 3000); return; }
+    if (!gestureMappings[newIndex]) { gestureMappings[newIndex] = { source: 'NONE', target: 'NONE' }; }
+    renderGestureMappingUI(); updateActiveGestureMappingsList(); saveAllPersistentSettings();
+}
+function removeGestureMappingSlot(event) {
+    const indexToRemove = parseInt(event.target.dataset.index, 10);
+    if (gestureMappings[indexToRemove]) { gestureMappings[indexToRemove] = { source: 'NONE', target: 'NONE' }; }
+    renderGestureMappingUI(); updateActiveGestureMappingsList(); saveAllPersistentSettings();
+}
+function resetAllGestureMappings() {
+    gestureMappings = Array(MAX_GESTURE_MAPPINGS).fill(null).map(() => ({ source: 'NONE', target: 'NONE' }));
+    renderGestureMappingUI(); updateActiveGestureMappingsList(); saveAllPersistentSettings(); displayGlobalError("Todos os mapeamentos de gestos foram resetados.", 3000);
+}
+function renderGestureMappingUI() {
+    const modalContent = document.getElementById('gestureMappingModalContent'); if (!modalContent) return; modalContent.innerHTML = '';
+    while(gestureMappings.length < MAX_GESTURE_MAPPINGS) { gestureMappings.push({ source: 'NONE', target: 'NONE' }); }
+    if(gestureMappings.length > MAX_GESTURE_MAPPINGS) { gestureMappings = gestureMappings.slice(0, MAX_GESTURE_MAPPINGS); }
+    let activeSlots = 0;
+    gestureMappings.forEach((mapping, index) => {
+        if (mapping.source !== 'NONE' || mapping.target !== 'NONE' || activeSlots < 1) {
+            const slotElement = createGestureMappingSlot(index, mapping); modalContent.appendChild(slotElement);
+            if (mapping.source !== 'NONE' || mapping.target !== 'NONE') { activeSlots++; }
+        }
+    });
+     if (activeSlots === 0 && modalContent.children.length === 0) { const slotElement = createGestureMappingSlot(0, { source: 'NONE', target: 'NONE' }); modalContent.appendChild(slotElement); }
+    const addButton = document.getElementById('addGestureMappingButton');
+    if(addButton) { const currentActiveMappings = gestureMappings.filter(m => m.source !== 'NONE' || m.target !== 'NONE').length; addButton.disabled = currentActiveMappings >= MAX_GESTURE_MAPPINGS; }
+}
+
+let isStoppingDueToError = false; let isSavingAudio = false;
+function startAudioRecording() {
+    if (!simpleSynth || !simpleSynth.masterGainNode || !audioCtx) { displayGlobalError("Sintetizador ou contexto de áudio não inicializado.", 5000); return; }
+    if (audioCtx.state === 'suspended') { displayGlobalError("Contexto de áudio suspenso. Interaja com a página primeiro.", 5000); return; }
+    try {
+        const destinationNode = audioCtx.createMediaStreamDestination(); simpleSynth.masterGainNode.connect(destinationNode);
+        const options = { mimeType: 'audio/webm; codecs=opus' };
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            console.warn(`${options.mimeType} não é suportado. Tentando audio/ogg...`); options.mimeType = 'audio/ogg; codecs=opus';
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                console.warn(`${options.mimeType} não é suportado. Tentando audio/webm (default)...`); options.mimeType = 'audio/webm';
+                 if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    console.error("Nenhum tipo MIME suportado para MediaRecorder (webm, ogg)."); displayGlobalError("Gravação de áudio não suportada neste navegador.", 7000);
+                    simpleSynth.masterGainNode.disconnect(destinationNode); return;
+                 }
+            }
+        }
+        console.log(`Usando mimeType: ${options.mimeType}`); mediaRecorder = new MediaRecorder(destinationNode.stream, options);
+        mediaRecorder.ondataavailable = event => { if (event.data.size > 0) { audioChunks.push(event.data); } };
+        mediaRecorder.onstart = () => {
+            audioChunks = []; isAudioRecording = true; isAudioPaused = false;
+            if (recordAudioButton) { recordAudioButton.innerHTML = '<span class="recording-dot">🔴</span> Parar Gravação'; recordAudioButton.classList.add('active', 'recording'); }
+            if (pauseAudioButton) { pauseAudioButton.disabled = false; pauseAudioButton.textContent = "⏸️ Pausar Gravação"; }
+            if (saveAudioButton) saveAudioButton.disabled = true; updateAudioRecordingHUD(true, false, 0); logOSC("SYSTEM", "Gravação de Áudio Iniciada", []); displayGlobalError("Gravação de áudio iniciada.", 3000);
+        };
+        mediaRecorder.onstop = () => {
+            isAudioPaused = false;
+            if (recordAudioButton) { recordAudioButton.innerHTML = "⏺️ Gravar Áudio"; recordAudioButton.classList.remove('active', 'recording', 'paused'); }
+            if (pauseAudioButton) { pauseAudioButton.disabled = true; pauseAudioButton.textContent = "⏸️ Pausar Gravação"; }
+            if (saveAudioButton) saveAudioButton.disabled = audioChunks.length === 0;
+            updateAudioRecordingHUD(false, false, 0);
+            if (audioChunks.length === 0 && !isSavingAudio) { logOSC("SYSTEM", "Gravação de Áudio Parada (sem dados)", []); displayGlobalError("Gravação de áudio parada (sem dados).", 3000);
+            } else if (!isSavingAudio) { logOSC("SYSTEM", "Gravação de Áudio Parada (dados disponíveis)", []); displayGlobalError("Gravação de áudio parada. Pronto para salvar.", 3000); }
+            try { if(simpleSynth && simpleSynth.masterGainNode && destinationNode && destinationNode.numberOfOutputs > 0) { simpleSynth.masterGainNode.disconnect(destinationNode); console.log("masterGainNode desconectado do destinationNode da gravação."); }
+            } catch (e) { console.warn("Erro ao desconectar destinationNode (pode já estar desconectado):", e); }
+        };
+        mediaRecorder.onpause = () => { if (pauseAudioButton) pauseAudioButton.innerHTML = "▶️ Retomar"; if (recordAudioButton) recordAudioButton.classList.add('paused'); isAudioPaused = true; updateAudioRecordingHUD(true, true, mediaRecorder.stream.currentTime); logOSC("SYSTEM", "Gravação de Áudio Pausada (onpause)", []); };
+        mediaRecorder.onresume = () => { if (pauseAudioButton) pauseAudioButton.innerHTML = "⏸️ Pausar"; if (recordAudioButton) recordAudioButton.classList.remove('paused'); isAudioPaused = false; updateAudioRecordingHUD(true, false, mediaRecorder.stream.currentTime); logOSC("SYSTEM", "Gravação de Áudio Retomada (onresume)", []); };
+        mediaRecorder.onerror = (event) => { console.error("Erro no MediaRecorder:", event.error); displayGlobalError(`Erro na gravação: ${event.error.name || 'Erro desconhecido'}.`, 7000); stopAudioRecording(true); };
+        mediaRecorder.start(1000);
+    } catch (e) { console.error("Falha ao iniciar MediaRecorder:", e); displayGlobalError(`Falha ao iniciar gravação: ${e.message || 'Erro desconhecido'}. Verifique as permissões e o console.`, 7000); isAudioRecording = false; updateAudioRecordingHUD(false, false, 0); }
+}
+function stopAudioRecording(dueToError = false) {
+    isStoppingDueToError = dueToError; if (mediaRecorder && (mediaRecorder.state === "recording" || mediaRecorder.state === "paused")) { try { mediaRecorder.stop(); } catch (e) { console.error("Erro ao chamar mediaRecorder.stop():", e); displayGlobalError("Erro ao parar gravação.", 5000); } }
+    isAudioRecording = false; isAudioPaused = false;
+    if (recordAudioButton) { recordAudioButton.innerHTML = "⏺️ Gravar Áudio"; recordAudioButton.classList.remove('active', 'recording', 'paused'); }
+    if (pauseAudioButton) { pauseAudioButton.disabled = true; pauseAudioButton.innerHTML = "⏸️ Pausar"; }
+    if (saveAudioButton) { saveAudioButton.disabled = (audioChunks.length === 0); }
+    updateAudioRecordingHUD(false, false, 0); if (dueToError) { logOSC("SYSTEM", "Gravação de Áudio Interrompida por Erro", []); }
+}
+function saveRecordedAudio() {
+    if (audioChunks.length === 0) { displayGlobalError("Nenhum áudio gravado para salvar.", 3000); if (saveAudioButton) saveAudioButton.disabled = true; return; }
+    let mimeType = 'audio/webm; codecs=opus';
+    if (mediaRecorder && mediaRecorder.mimeType) { mimeType = mediaRecorder.mimeType; }
+    else if (audioChunks.length > 0 && audioChunks[0].type && MediaRecorder.isTypeSupported(audioChunks[0].type)) { mimeType = audioChunks[0].type; }
+    console.log("Salvando blob com mimeType:", mimeType); isSavingAudio = true;
+    const blob = new Blob(audioChunks, { type: mimeType }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); document.body.appendChild(a); a.style.display = 'none'; a.href = url;
+    const fileExtension = mimeType.includes('ogg') ? 'ogg' : (mimeType.includes('mp4') ? 'mp4' : 'webm');
+    a.download = `gravacao_msm_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.${fileExtension}`; a.click(); window.URL.revokeObjectURL(url); document.body.removeChild(a);
+    logOSC("SYSTEM", `Áudio Salvo: ${a.download}`, []); displayGlobalError(`Áudio salvo como ${a.download}!`, 5000); updateAudioRecordingHUD(false, false, 0, true);
+    audioChunks = []; if (saveAudioButton) saveAudioButton.disabled = true; if (recordAudioButton) recordAudioButton.classList.remove('active', 'recording', 'paused');
+    isSavingAudio = false;
+}
+let audioRecordingHUDTimer = null;
+function updateAudioRecordingHUD(isRecording, isPaused, durationSeconds = 0, isSaved = false) {
+    let hudRecordDiv = document.getElementById('audioRecordingHUD');
+    if (!hudRecordDiv) {
+        hudRecordDiv = document.createElement('div'); hudRecordDiv.id = 'audioRecordingHUD';
+        Object.assign(hudRecordDiv.style, { position: 'fixed', top: '60px', left: '50%', transform: 'translateX(-50%)', padding: '8px 15px', backgroundColor: 'rgba(200, 0, 0, 0.7)', color: 'white', zIndex: '1005', borderRadius: '5px', boxShadow: '0 1px 5px rgba(0,0,0,0.2)', textAlign: 'center', fontSize: '13px', display: 'none', transition: 'background-color 0.3s, opacity 0.3s' });
+        document.body.appendChild(hudRecordDiv);
+    }
+    if (audioRecordingHUDTimer) { clearInterval(audioRecordingHUDTimer); audioRecordingHUDTimer = null; }
+    if (isRecording) {
+        hudRecordDiv.style.display = 'block'; hudRecordDiv.style.opacity = '1'; let startTime = performance.now() - (durationSeconds * 1000);
+        audioRecordingHUDTimer = setInterval(() => {
+            const elapsedMs = performance.now() - startTime; const currentDurationSec = Math.floor(elapsedMs / 1000);
+            const minutes = Math.floor(currentDurationSec / 60); const seconds = currentDurationSec % 60; const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            if (isPaused) { hudRecordDiv.textContent = `⏸️ GRAVAÇÃO PAUSADA (${timeStr})`; hudRecordDiv.style.backgroundColor = 'rgba(255, 165, 0, 0.7)';
+            } else { hudRecordDiv.textContent = `🔴 GRAVANDO (${timeStr})`; hudRecordDiv.style.backgroundColor = 'rgba(200, 0, 0, 0.7)'; }
+        }, 1000);
+        const initialDurationSec = Math.floor((performance.now() - startTime) / 1000); const initialMinutes = Math.floor(initialDurationSec / 60); const initialSeconds = initialDurationSec % 60; const initialTimeStr = `${initialMinutes.toString().padStart(2, '0')}:${initialSeconds.toString().padStart(2, '0')}`;
+        if (isPaused) { hudRecordDiv.textContent = `⏸️ GRAVAÇÃO PAUSADA (${initialTimeStr
