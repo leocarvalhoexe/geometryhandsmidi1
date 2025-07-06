@@ -1260,8 +1260,8 @@ function setupEventListeners() {
     }
 } // END OF setupEventListeners FUNCTION.
   // v69: Added missing closing curly brace for the setupEventListeners function.
-  // This was causing a "SyntaxError: Unexpected token ')'" at the end of the DOMContentLoaded listener,
-  // as the '}' from DOMContentLoaded was incorrectly closing setupEventListeners.
+  // This addresses the "SyntaxError: Unexpected token ')'" at the end of the
+  // DOMContentLoaded listener, caused by its '}' incorrectly closing setupEventListeners.
 
 function handleSynthControlChange(param, value) {
     if (spectatorModeActive || !simpleSynth) return;
