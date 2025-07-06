@@ -2424,7 +2424,9 @@ function applyActiveGestureMappings() {
       // before this function is called, perhaps in onResults.
       // TEMPORARY: If liquify is active, use its current distortion for avgDisp
       if (shape.activeGesture === 'liquify' && shape.rightHandLandmarks) {
-          const fingertips = [4, 8, 12, 16, 20]; const maxInfluence = 150; const maxForce = 25;
+          const fingertips = [4, 8, 12, 16, 20]; // Ponto e vírgula removido daqui
+          const maxInfluence = 150;
+          const maxForce = 25;
           const cx = shape.centerX; const cy = shape.centerY; let r = shape.radius;
           let totalDispMag = 0; let activeLiquifyPts = 0;
           for (let i = 0; i < shape.sides; i++) {
