@@ -551,7 +551,59 @@ function onResults(results) { /* ... (mesma lógica da v73, mas chama updateHUD 
   updateHUD();
 }
 function drawLandmarks(landmarksArray, handedness = "Unknown") { /* ... (mesma lógica da v73) ... */ }
-function drawFallbackAnimation() { /* ... (mesma lógica da v73) ... */ }
+function drawFallbackAnimation() {
+  if (!ctx || beatMatrixContainer.classList.contains('visible')) return;
+
+  const now = performance.now();
+  const dpr = window.devicePixelRatio || 1;
+  const canvasWidth = canvasElement.width / dpr;
+  const canvasHeight = canvasElement.height / dpr;
+
+  // Se fallbackShapes estiver vazio E cameraError for true, popule-o
+  if (cameraError && fallbackShapes.length === 0 && canvasWidth > 0 && canvasHeight > 0) {
+    for (let i = 0; i < 5; i++) { // Desenha 5 formas aleatórias
+        fallbackShapes.push({
+            x: Math.random() * canvasWidth,
+            y: Math.random() * canvasHeight,
+            radius: Math.random() * 15 + 8, // Tamanhos entre 8 e 23
+            color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+            vx: (Math.random() - 0.5) * 1.5, // Velocidades mais lentas
+            vy: (Math.random() - 0.5) * 1.5,
+            sides: Math.floor(Math.random() * 5) + 3, // 3 a 7 lados
+            angle: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.02
+        });
+    }
+    logDebug("Fallback shapes populadas DENTRO de drawFallbackAnimation.");
+  }
+
+  // Apenas desenha se fallbackShapes tiver algo
+  if (fallbackShapes.length > 0) {
+    fallbackShapes.forEach(shape => {
+      shape.x += shape.vx;
+      shape.y += shape.vy;
+      shape.angle += shape.rotationSpeed;
+
+      if (shape.x - shape.radius < 0 || shape.x + shape.radius > canvasWidth) shape.vx *= -1;
+      if (shape.y - shape.radius < 0 || shape.y + shape.radius > canvasHeight) shape.vy *= -1;
+
+      ctx.beginPath();
+      for (let i = 0; i < shape.sides; i++) {
+          const currentAngle = shape.angle + (i / shape.sides) * Math.PI * 2;
+          const xPos = shape.x + shape.radius * Math.cos(currentAngle);
+          const yPos = shape.y + shape.radius * Math.sin(currentAngle);
+          if (i === 0) ctx.moveTo(xPos, yPos);
+          else ctx.lineTo(xPos, yPos);
+      }
+      ctx.closePath();
+      ctx.fillStyle = shape.color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+  }
+}
 
 // --- Funções de Controle e UI (Adaptadas de main73.js) ---
 function updateHUD() { /* ... (mesma lógica da v73, mas pode precisar de infos da BM com múltiplas barras) ... */
@@ -737,8 +789,263 @@ function setupEventListeners() { /* ... (mesma lógica da v73, com atenção aos
     });
   }
   window.addEventListener('keydown', handleKeyPress);
+
+  const toggleSynthPanelButton = document.getElementById('toggleSynthPanelButtonFixed');
+  const synthControlsSidebar = document.getElementById('synthControlsSidebar');
+  if (toggleSynthPanelButton && synthControlsSidebar) {
+    toggleSynthPanelButton.addEventListener('click', () => {
+      const isOpen = synthControlsSidebar.classList.toggle('open');
+      toggleSynthPanelButton.classList.toggle('active', isOpen);
+      logDebug(`Painel Synth ${isOpen ? 'aberto' : 'fechado'}`);
+      // Se o painel do arpejador estiver aberto e o do synth também, feche o do arpejador
+      if (isOpen && arpeggiatorControlsPanel && arpeggiatorControlsPanel.classList.contains('open')) {
+        arpeggiatorControlsPanel.classList.remove('open');
+        if(toggleArpPanelButtonFixed) toggleArpPanelButtonFixed.classList.remove('active');
+        logDebug('Painel Arp fechado devido à abertura do painel Synth');
+      }
+    });
+  }
+
+  // toggleArpPanelButtonFixed e arpeggiatorControlsPanel já são definidos no escopo global do script
+  if (toggleArpPanelButtonFixed && arpeggiatorControlsPanel) {
+    toggleArpPanelButtonFixed.addEventListener('click', () => {
+      const isOpen = arpeggiatorControlsPanel.classList.toggle('open');
+      toggleArpPanelButtonFixed.classList.toggle('active', isOpen);
+      logDebug(`Painel Arp ${isOpen ? 'aberto' : 'fechado'}`);
+      // Se o painel do synth estiver aberto e o do arp também, feche o do synth
+      if (isOpen && synthControlsSidebar && synthControlsSidebar.classList.contains('open')) {
+        synthControlsSidebar.classList.remove('open');
+        if(toggleSynthPanelButton) toggleSynthPanelButton.classList.remove('active');
+        logDebug('Painel Synth fechado devido à abertura do painel Arp');
+      }
+    });
+  }
   // ... (outros listeners)
+
+  // Listeners para os controles do painel do Sintetizador (sc*)
+  const scWaveformSelect = document.getElementById('scWaveformSelect');
+  if (scWaveformSelect) {
+    scWaveformSelect.addEventListener('change', (e) => {
+      if (simpleSynth) simpleSynth.setWaveform(e.target.value);
+      logDebug('Synth Panel: Waveform changed to', e.target.value);
+      saveAudioSettings(); // Reutilizar função de salvar se aplicável
+    });
+  }
+  const scMasterVolume = document.getElementById('scMasterVolume');
+  const scMasterVolumeValue = document.getElementById('scMasterVolumeValue');
+  if (scMasterVolume) {
+    scMasterVolume.addEventListener('input', (e) => {
+      if (simpleSynth) simpleSynth.setMasterVolume(parseFloat(e.target.value));
+      if (scMasterVolumeValue) scMasterVolumeValue.textContent = e.target.value;
+      logDebug('Synth Panel: Master Volume changed to', e.target.value);
+      saveAudioSettings();
+    });
+  }
+  // ADSR
+  const adsrControls = [
+    { sliderId: 'scAttack', valueId: 'scAttackValue', setter: (synth, val) => synth.setAttack(val) },
+    { sliderId: 'scDecay', valueId: 'scDecayValue', setter: (synth, val) => synth.setDecay(val) },
+    { sliderId: 'scSustain', valueId: 'scSustainValue', setter: (synth, val) => synth.setSustain(val) },
+    { sliderId: 'scRelease', valueId: 'scReleaseValue', setter: (synth, val) => synth.setRelease(val) },
+  ];
+  adsrControls.forEach(ctrl => {
+    const slider = document.getElementById(ctrl.sliderId);
+    const valueDisplay = document.getElementById(ctrl.valueId);
+    if (slider) {
+      slider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (simpleSynth) ctrl.setter(simpleSynth, val);
+        if (valueDisplay) valueDisplay.textContent = val.toFixed(3);
+        logDebug(`Synth Panel: ${ctrl.sliderId} changed to`, val);
+        saveAudioSettings();
+      });
+    }
+  });
+
+  // Outros efeitos do Synth Panel
+  const fxControls = [
+    { sliderId: 'scDistortion', valueId: 'scDistortionValue', setter: (synth, val) => synth.setDistortion(val/100), multiplier: 100, unit: '%' }, // Dividir por 100 para o synth
+    { sliderId: 'scFilterCutoff', valueId: 'scFilterCutoffValue', setter: (synth, val) => synth.setFilterCutoff(val), unit: ' Hz' },
+    { sliderId: 'scFilterResonance', valueId: 'scFilterResonanceValue', setter: (synth, val) => synth.setFilterResonance(val) },
+    { sliderId: 'scLfoRate', valueId: 'scLfoRateValue', setter: (synth, val) => synth.setLfoRate(val), unit: ' Hz' },
+    { sliderId: 'scLfoPitchDepth', valueId: 'scLfoPitchDepthValue', setter: (synth, val) => synth.setLfoPitchDepth(val), unit: ' Hz' },
+    { sliderId: 'scLfoFilterDepth', valueId: 'scLfoFilterDepthValue', setter: (synth, val) => synth.setLfoFilterDepth(val), unit: ' Hz' },
+    { sliderId: 'scDelayTime', valueId: 'scDelayTimeValue', setter: (synth, val) => synth.setDelayTime(val), unit: ' s' },
+    { sliderId: 'scDelayFeedback', valueId: 'scDelayFeedbackValue', setter: (synth, val) => synth.setDelayFeedback(val) },
+    { sliderId: 'scDelayMix', valueId: 'scDelayMixValue', setter: (synth, val) => synth.setDelayMix(val) },
+    { sliderId: 'scReverbMix', valueId: 'scReverbMixValue', setter: (synth, val) => synth.setReverbMix(val) },
+  ];
+  fxControls.forEach(ctrl => {
+    const slider = document.getElementById(ctrl.sliderId);
+    const valueDisplay = document.getElementById(ctrl.valueId);
+    if (slider) {
+      slider.addEventListener('input', (e) => {
+        let val = parseFloat(e.target.value);
+        if (simpleSynth) ctrl.setter(simpleSynth, val);
+        if (valueDisplay) valueDisplay.textContent = `${ctrl.multiplier ? (val / ctrl.multiplier * 100).toFixed(0) : val.toFixed(ctrl.unit === ' s' || ctrl.sliderId === 'scDelayFeedback' || ctrl.sliderId === 'scDelayMix' || ctrl.sliderId === 'scReverbMix' ? 2 : 0)}${ctrl.unit || ''}`;
+        logDebug(`Synth Panel: ${ctrl.sliderId} changed to`, val);
+        saveAudioSettings();
+      });
+    }
+  });
+  const scLfoWaveform = document.getElementById('scLfoWaveform');
+  if (scLfoWaveform) {
+    scLfoWaveform.addEventListener('change', (e) => {
+      if (simpleSynth) simpleSynth.setLfoWaveform(e.target.value);
+      logDebug('Synth Panel: LFO Waveform changed to', e.target.value);
+      saveAudioSettings();
+    });
+  }
+
+  // Listeners para os botões de gravação de áudio no painel do synth
+  const recordAudioButtonSC = document.getElementById('recordAudioButton'); // ID já existente no HTML
+  const pauseAudioButtonSC = document.getElementById('pauseAudioButton');
+  const saveAudioButtonSC = document.getElementById('saveAudioButton');
+
+  if (recordAudioButtonSC) {
+    recordAudioButtonSC.addEventListener('click', () => {
+      if (!isAudioRecording) {
+        startAudioRecording();
+      } else {
+        stopAudioRecording(); // Se já estiver gravando, o botão age como stop
+      }
+    });
+  }
+  if (pauseAudioButtonSC) {
+    pauseAudioButtonSC.addEventListener('click', () => {
+      if (isAudioRecording && mediaRecorder) {
+        if (mediaRecorder.state === "recording") {
+          mediaRecorder.pause();
+          isAudioPaused = true;
+          pauseAudioButtonSC.textContent = "▶️ Retomar";
+          recordAudioButtonSC.classList.add("paused");
+          logDebug("Gravação de áudio pausada.");
+        } else if (mediaRecorder.state === "paused") {
+          mediaRecorder.resume();
+          isAudioPaused = false;
+          pauseAudioButtonSC.textContent = "⏸️ Pausar";
+          recordAudioButtonSC.classList.remove("paused");
+          logDebug("Gravação de áudio retomada.");
+        }
+        updateAudioRecordingHUD(isAudioRecording, isAudioPaused);
+      }
+    });
+  }
+  if (saveAudioButtonSC) {
+    saveAudioButtonSC.addEventListener('click', () => {
+      if (audioChunks.length > 0) {
+        saveRecordedAudio();
+      }
+    });
+  }
+
+  // Listeners para os controles do painel do Arpejador (arpPanel*)
+  // arpPanelStyleSelect, arpPanelRandomnessSlider, etc., já são obtidos no início do script.
+  if (arpPanelStyleSelect) {
+    arpPanelStyleSelect.addEventListener('change', (event) => {
+      currentArpeggioStyle = event.target.value;
+      logDebug('Arp Panel: Style changed to', currentArpeggioStyle);
+      saveArpeggioSettings();
+    });
+  }
+  if (arpPanelRandomnessSlider) {
+    arpPanelRandomnessSlider.addEventListener('input', (event) => {
+      arpRandomness = parseInt(event.target.value, 10);
+      if (arpPanelRandomnessValueSpan) arpPanelRandomnessValueSpan.textContent = `${arpRandomness}%`;
+      logDebug('Arp Panel: Randomness changed to', arpRandomness);
+      saveArpeggioSettings();
+    });
+  }
+  if (arpPanelSwingSlider) {
+    arpPanelSwingSlider.addEventListener('input', (event) => {
+      arpSwing = parseInt(event.target.value, 10);
+      if (arpPanelSwingValueSpan) arpPanelSwingValueSpan.textContent = `${arpSwing}%`;
+      logDebug('Arp Panel: Swing changed to', arpSwing);
+      saveArpeggioSettings();
+    });
+  }
+  if (arpPanelGhostNoteChanceSlider) {
+    arpPanelGhostNoteChanceSlider.addEventListener('input', (event) => {
+      arpGhostNoteChance = parseInt(event.target.value, 10);
+      if (arpPanelGhostNoteChanceValueSpan) arpPanelGhostNoteChanceValueSpan.textContent = `${arpGhostNoteChance}%`;
+      logDebug('Arp Panel: Ghost Note Chance changed to', arpGhostNoteChance);
+      saveArpeggioSettings();
+    });
+  }
+  // Preencher o select de estilos do arpejador
+  if (arpPanelStyleSelect) {
+    ARPEGGIO_STYLES.forEach(style => {
+        const option = new Option(style.charAt(0).toUpperCase() + style.slice(1).toLowerCase(), style);
+        arpPanelStyleSelect.add(option);
+    });
+    // Carregar valor salvo, se houver
+    const savedArpSettings = loadPersistentSetting(ARPEGGIO_SETTINGS_KEY, {});
+    if (savedArpSettings.style) currentArpeggioStyle = savedArpSettings.style;
+    arpPanelStyleSelect.value = currentArpeggioStyle;
+
+    if (savedArpSettings.randomness !== undefined) arpRandomness = savedArpSettings.randomness;
+    if (arpPanelRandomnessSlider) arpPanelRandomnessSlider.value = arpRandomness;
+    if (arpPanelRandomnessValueSpan) arpPanelRandomnessValueSpan.textContent = `${arpRandomness}%`;
+
+    if (savedArpSettings.swing !== undefined) arpSwing = savedArpSettings.swing;
+    if (arpPanelSwingSlider) arpPanelSwingSlider.value = arpSwing;
+    if (arpPanelSwingValueSpan) arpPanelSwingValueSpan.textContent = `${arpSwing}%`;
+
+    if (savedArpSettings.ghostNoteChance !== undefined) arpGhostNoteChance = savedArpSettings.ghostNoteChance;
+    if (arpPanelGhostNoteChanceSlider) arpPanelGhostNoteChanceSlider.value = arpGhostNoteChance;
+    if (arpPanelGhostNoteChanceValueSpan) arpPanelGhostNoteChanceValueSpan.textContent = `${arpGhostNoteChance}%`;
+  }
+
+  // Listener para a sidebar principal
+  if (sidebarHandle && sidebar) {
+    sidebarHandle.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+      logDebug(`Sidebar principal ${sidebar.classList.contains('open') ? 'aberta' : 'fechada'}`);
+    });
+  }
 }
+
+// Função saveArpeggioSettings (pode precisar ser criada ou adaptada)
+function saveArpeggioSettings() {
+  const settings = {
+    style: currentArpeggioStyle,
+    randomness: arpRandomness,
+    swing: arpSwing,
+    ghostNoteChance: arpGhostNoteChance,
+    // bpm e interval são globais, não salvos aqui especificamente pelo painel do arp
+  };
+  savePersistentSetting(ARPEGGIO_SETTINGS_KEY, settings);
+  logDebug("Arpeggio settings saved from Arp Panel", settings);
+}
+
+// Função saveAudioSettings (pode precisar ser criada ou adaptada)
+function saveAudioSettings() {
+  if (!simpleSynth) return;
+  const settings = {
+    waveform: simpleSynth.waveform,
+    masterVolume: simpleSynth.masterGainNode.gain.value,
+    attack: simpleSynth.attackTime,
+    decay: simpleSynth.decayTime,
+    sustain: simpleSynth.sustainLevel,
+    release: simpleSynth.releaseTime,
+    distortion: simpleSynth.distortionAmount,
+    filterCutoff: simpleSynth.filterNode.frequency.value,
+    filterResonance: simpleSynth.filterNode.Q.value,
+    lfoWaveform: simpleSynth.lfo.type,
+    lfoRate: simpleSynth.lfo.frequency.value,
+    lfoPitchDepth: simpleSynth.lfoGainPitch.gain.value,
+    lfoFilterDepth: simpleSynth.lfoGainFilter.gain.value,
+    delayTime: simpleSynth.delayNode.delayTime.value,
+    delayFeedback: simpleSynth.delayFeedbackGain.gain.value,
+    delayMix: simpleSynth.delayDryGain.gain.value === Math.cos(0) ? 0 : Math.acos(simpleSynth.delayDryGain.gain.value) / (0.5 * Math.PI), // Aproximação
+    reverbMix: simpleSynth.reverbDryGain.gain.value === Math.cos(0) ? 0 : Math.acos(simpleSynth.reverbDryGain.gain.value) / (0.5 * Math.PI), // Aproximação
+    // scBPM não é salvo aqui pois é global
+  };
+  savePersistentSetting('audioSettingsV74', settings); // Usar uma nova chave para v74
+  logDebug("Audio settings saved from Synth Panel", settings);
+}
+
+
 function handleKeyPress(e) { /* ... (mesma lógica da v73, mas beatMatrix.togglePlayback pode ser para a BM principal) ... */
     const activeEl = document.activeElement;
     const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
