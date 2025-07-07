@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>MIDI Shape Manipulator v75 - Câmera e Botões Funcionais</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; /* Prevenir scroll no body */ }
+    body { background: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; color: #eee; position: relative; }
+
+    .control-button {
+      margin: 4px;
+      padding: 8px 12px;
+      background-color: #383838;
+      color: #ddd;
+      border: 1px solid #555;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 13px;
+      white-space: nowrap;
+      transition: background-color 0.2s, color 0.2s;
+      flex-shrink: 0;
+      display: block;
+      width: calc(100% - 8px);
+      text-align: left;
+    }
+    .control-button:hover { background-color: #4a4a4a; color: white; }
+    .control-button:active { background-color: #555; }
+    .control-button:disabled { background-color: #2a2a2a; color: #777; border-color: #444; cursor: not-allowed;}
+    .control-button.active { background-color: #007bff; color: white; border-color: #0056b3;}
+
+    #mainCanvasContainer { flex-grow: 1; position: relative; background-color: #000; overflow: hidden; /* Prevent canvas from causing scrollbars */ }
+    canvas#canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+
+    /* Sidebar Styles */
+    #sidebar {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      width: 240px; /* Largura padronizada */
+      background-color: var(--sidebar-bg); /* Usar variável de tema */
+      border-right: 1px solid var(--border-color-medium);
+      z-index: 1001;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease-in-out;
+      overflow-y: auto;
+      padding-top: 8px;
+      box-shadow: 2px 0 5px rgba(0,0,0,0.15);
+    }
+
+    #sidebar.open {
+      transform: translateX(0);
+    }
+
+    #sidebarHandle {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      width: 38px;
+      height: 38px;
+      background-color: var(--accent-color);
+      border-radius: 4px;
+      border: 1px solid var(--accent-color-dark);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: var(--button-text-color-active);
+      z-index: 1002;
+      transition: background-color 0.2s;
+      box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+    }
+    #sidebarHandle:hover {
+      background-color: var(--accent-color-dark);
+    }
+
+    #sidebarContent {
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #sidebarContent h4 { /* V66: Estilo para títulos de grupo na sidebar */
+      margin-top: 12px;
+      margin-bottom: 4px;
+      font-size: 0.9em;
+      color: var(--accent-color-light);
+      border-bottom: 1px solid var(--border-color-light);
+      padding-bottom: 4px;
+    }
+    #sidebarContent h4:first-child {
+      margin-top: 0;
+    }
+    .sidebar-group-icon { /* V66: Estilo para ícones de grupo */
+      margin-right: 6px;
+    }
+    /* V66: Estilos para texto e indicador dentro dos botões */
+    .control-button .button-text {
+      margin-left: 4px; /* Pequeno espaço após o ícone */
+    }
+    .control-button .status-indicator {
+      font-size: 0.8em;
+      margin-left: 6px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      background-color: rgba(0,0,0,0.2);
+    }
+    .control-button.active .status-indicator {
+      background-color: rgba(255,255,255,0.2);
+    }
+    .control-button.active.info-active .status-indicator { /* Para botões com cor de info */
+        color: var(--info-color-dark); /* Ajustar para contraste se necessário */
+        background-color: rgba(255,255,255,0.7);
+    }
+     .control-button.active.error-active .status-indicator { /* Para botões com cor de erro (gravação) */
+        color: var(--error-color-dark);
+        background-color: rgba(255,255,255,0.7);
+    }
+
+
+    /* Estilo para o botão fixo do painel synth */
+    #toggleSynthPanelButtonFixed {
+        position: fixed;
+        top: 8px; /* Alinhado com sidebarHandle */
+        right: 8px; /* Mais próximo da borda por padrão */
+        z-index: 1002; /* Mesmo nível do sidebarHandle, mas à direita */
+        padding: 6px 10px;
+        font-size: 18px;
+        width: auto;
+        /* Outros estilos são herdados de .control-button */
+    }
+    #toggleSynthPanelButtonFixed.control-button { /* Sobrescreve width de .control-button */
+        width: auto;
+    }
+    /* V65: Estilo para o botão fixo do painel Arp */
+    #toggleArpPanelButtonFixed {
+        position: fixed;
+        top: 8px;
+        right: 55px; /* Ao lado do botão do synth */
+        z-index: 1002;
+        padding: 6px 10px;
+        font-size: 18px;
+        width: auto;
+    }
+    #toggleArpPanelButtonFixed.control-button { width: auto; }
+
+
+    /* Ajustes para telas menores */
+    @media (max-width: 768px) {
+      #sidebar {
+        width: 200px; /* Mais estreito */
+      }
+      #toggleSynthPanelButtonFixed {
+        top: 50px; /* Abaixo do sidebarHandle */
+        right: 8px;
+      }
+      #toggleArpPanelButtonFixed {
+        top: 50px;
+        right: 55px; /* Ao lado do botão do synth */
+      }
+      /* Para o painel do synth em si, se aberto */
+      #synthControlsSidebar.open {
+        width: calc(100% - 16px); /* Quase tela cheia */
+        max-height: calc(100vh - 60px); /* Deixa espaço para o botão de fechar e margens */
+        top: 50px; /* Abaixo do botão que o abre */
+      }
+      /* V65: Para o painel do Arp em si, se aberto em telas menores */
+      #arpeggiatorControlsPanel.open {
+        width: calc(100% - 16px); /* Quase tela cheia */
+        max-height: calc(100vh - 100px); /* Ajustar conforme necessário */
+        top: 90px; /* Abaixo dos botões de toggle */
+        right: 8px; /* Resetar right para ocupar a largura */
+        transform: translateX(0); /* Garantir que esteja visível */
+      }
+    }
+    @media (max-width: 480px) {
+       .control-button { font-size: 12px; padding: 7px 10px; }
+       #sidebarHandle { width: 36px; height: 36px; font-size: 16px; }
+       #toggleSynthPanelButtonFixed { font-size: 16px; padding: 5px 8px; top: 48px;}
+       #toggleArpPanelButtonFixed { font-size: 16px; padding: 5px 8px; top: 48px; right: 50px;}
+    }
+
+
+    .modal-overlay {
+      display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%;
+      background-color: var(--modal-overlay-bg);
+      z-index: 1010;
+      justify-content: center; align-items: center;
+      padding: 8px; /* Menor padding para dar mais espaço ao conteúdo */
+      box-sizing: border-box;
+    }
+    .modal-content {
+      background-color: #282c34; color: #abb2bf;
+      padding: 20px;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 750px;
+      position: relative;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+      border: 1px solid #3e4451;
+      -webkit-overflow-scrolling: touch;
+    }
+    .modal-content h3 { margin-top: 0; border-bottom: 1px solid #3e4451; padding-bottom: 10px; color: #61afef; font-size: 1.3em; }
+    .modal-content p, .modal-content ul, .modal-content label { line-height: 1.6; color: #abb2bf; font-size: 0.9em; }
+    .modal-content ul { padding-left: 18px; }
+    .modal-content li { margin-bottom: 5px;}
+    .modal-content strong { color: #e5c07b; }
+    .modal-content code { background-color: #3a3f4b; padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; color: #d19a66;}
+    .modal-content a { color: #61afef; text-decoration: none; }
+    .modal-content a:hover { text-decoration: underline; }
+    .close-modal-button { position: absolute; top: 12px; right: 18px; font-size: 28px; cursor: pointer; color: #777; background: none; border: none; line-height: 1; padding: 5px;}
+    .close-modal-button:hover { color: #ccc; }
+    .modal-footer { margin-top: 25px; padding-top: 18px; border-top: 1px solid #3e4451; text-align: center; font-size: 0.8em; color: #777;}
+
+    .modal-content label { display: block; margin-top: 15px; margin-bottom: 5px; font-weight: 600; color: #98c379;}
+    .modal-content select, .modal-content input[type="range"], .modal-content input[type="number"], .modal-content input[type="text"], .modal-content textarea {
+      width: 100%;
+      padding: 10px; margin-top: 5px; border-radius: 4px;
+      border: 1px solid #3e4451; background-color: #21252b; color: #abb2bf; font-size: 0.9em;
+      box-sizing: border-box;
+    }
+    .modal-content input[type="range"] { padding-left:0; padding-right:0; height: auto;}
+    .modal-content textarea { min-height: 80px; resize: vertical; line-height: 1.4; }
+    .modal-content .value-display { margin-left: 8px; font-size: 0.85em; color: #61afef; }
+    .modal-content .button-group {
+      margin-top: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .modal-content .button-group.extra-margin-top { /* Nova classe para o margin-top específico */
+      margin-top: 20px;
+    }
+    .modal-content .button-group button {
+      flex-grow: 1;
+      padding: 12px 15px;
+      font-size: 0.9em;
+    }
+     @media (min-width: 480px) {
+        .modal-content .button-group {
+            flex-direction: row;
+        }
+    }
+    .modal-content hr { border: 0; height: 1px; background-color: var(--border-color-light); margin: 18px 0; }
+
+    /* Botões específicos com cores */
+    #saveOscConfigButton { background-color: var(--success-color); color: var(--button-text-color-active); }
+    #sendTestOSCButton { margin-top: 10px; background-color: var(--accent-color); color: var(--button-text-color-active); }
+    #clearOscLogButton, #exportOscLogButton { margin-top: 6px; }
+    #deleteSelectedPresetButton { background-color: var(--error-color); color: var(--button-text-color-active); }
+
+
+    video#video, input#importPresetFileInput { display: none; }
+    label[for="savedPresetsSelect"] { margin-top: 18px; }
+    select#savedPresetsSelect { min-height: 70px; } /* Reduzido */
+
+    button#reconnectOSCButton.control-button {
+      display: none; margin-left: 8px; padding: 2px 5px; font-size: 10px;
+    }
+
+    /* HUD Styles */
+    #hud {
+      position: fixed;
+      bottom: 8px;
+      right: 8px;
+      background-color: var(--hud-bg);
+      color: var(--text-color-primary);
+      padding: 7px 10px;
+      border-radius: 5px;
+      font-size: 11.5px; /* Reduzido */
+      z-index: 1000;
+      max-width: calc(100% - 16px);
+      line-height: 1.5;
+      border: 1px solid var(--border-color-medium);
+      box-shadow: 0 1px 8px rgba(0,0,0,0.25);
+    }
+    #hud.hidden { display: none; }
+    #hud b { color: var(--accent-color-light); }
+    #hud span.highlight { color: var(--warning-color); } /* Amarelo/Laranja */
+    #hud span.status-ok { color: var(--success-color); } /* Verde */
+    #hud span.status-error { color: var(--error-color); } /* Vermelho */
+    #hud span.status-warn { color: var(--warning-color); }
+
+
+    /* Botões ativos com cores específicas */
+    #recordOSCButton.active,
+    .control-button.recording { /* Para o botão de gravação de áudio */
+        background-color: var(--error-color);
+        border-color: var(--error-color-dark);
+        color: var(--button-text-color-active);
+    }
+    .control-button.recording.paused { /* Botão de gravação de áudio pausado */
+        background-color: var(--warning-color);
+        border-color: var(--warning-color-dark);
+    }
+    #playOSCLoopButton.active {
+        background-color: var(--warning-color);
+        border-color: var(--warning-color-dark);
+        color: var(--bg-color-dark); /* Texto escuro para contraste */
+    }
+    #syncDMXNotesButton.active,
+    #midiFeedbackToggleButton.active,
+    #spectatorModeButton.active,
+    #internalAudioToggleButton.active, /* Adicionado para consistência */
+    #midiToggleButton.active { /* Adicionado para consistência */
+        background-color: var(--info-color); /* Azul/Teal */
+        border-color: var(--info-color-dark);
+        color: var(--button-text-color-active);
+    }
+
+
+    /* --- Theme Variables & Styles --- */
+    :root {
+        --bg-color-dark: #111;
+        --text-color-dark: #eee;
+        --sidebar-bg-dark: #1c1c1c;
+        --border-color-medium-dark: #333;
+        --border-color-light-dark: #3e4451;
+        --control-button-bg-dark: #383838;
+        --control-button-text-dark: #ddd;
+        --control-button-border-dark: #555;
+        --control-button-hover-bg-dark: #4a4a4a;
+        --control-button-hover-text-dark: white;
+        --control-button-active-bg-dark: #007bff; /* Azul padrão para botões ativos genéricos */
+        --control-button-active-text-dark: white;
+        --control-button-disabled-bg-dark: #2a2a2a;
+        --control-button-disabled-text-dark: #777;
+        --modal-overlay-bg-dark: rgba(0,0,0,0.78);
+        --modal-content-bg-dark: #282c34;
+        --modal-content-text-dark: #abb2bf;
+        --modal-label-color-dark: #98c379; /* Verde para labels */
+        --modal-input-bg-dark: #21252b;
+        --hud-bg-dark: rgba(20, 22, 28, 0.85);
+
+        --bg-color-light: #f4f4f8;
+        --text-color-light: #333;
+        --sidebar-bg-light: #e9e9ef;
+        --border-color-medium-light: #c0c0c8;
+        --border-color-light-light: #ddd;
+        --control-button-bg-light: #ccc;
+        --control-button-text-light: #333;
+        --control-button-border-light: #aaa;
+        --control-button-hover-bg-light: #bbb;
+        --control-button-hover-text-light: #000;
+        --control-button-active-bg-light: #007bff;
+        --control-button-active-text-light: white;
+        --control-button-disabled-bg-light: #ddd;
+        --control-button-disabled-text-light: #999;
+        --modal-overlay-bg-light: rgba(50,50,50,0.6);
+        --modal-content-bg-light: #fdfdff;
+        --modal-content-text-light: #333;
+        --modal-label-color-light: #28a745; /* Verde para labels */
+        --modal-input-bg-light: #fff;
+        --hud-bg-light: rgba(230, 230, 240, 0.9);
+
+        /* Cores semânticas (podem ser ajustadas por tema se necessário, mas aqui são globais) */
+        --accent-color: #007bff;
+        --accent-color-dark: #0056b3;
+        --accent-color-light: #61afef; /* Para texto/ícones sobre fundo escuro */
+        --success-color: #28a745;
+        --error-color: #e06c75; /* Vermelho do tema dark */
+        --error-color-dark: #c05c65;
+        --warning-color: #e5c07b; /* Amarelo/Laranja do tema dark */
+        --warning-color-dark: #c5a05b;
+        --info-color: #56b6c2;    /* Teal/Cyan do tema dark */
+        --info-color-dark: #3696a2;
+
+        /* Cores de texto para botões ativos */
+        --button-text-color-active: white;
+    }
+
+    body { background-color: var(--bg-color); color: var(--text-color-primary); }
+    #sidebar { background-color: var(--sidebar-bg); border-right: 1px solid var(--border-color-medium);}
+    .control-button { background-color: var(--control-button-bg); color: var(--control-button-text); border: 1px solid var(--control-button-border); }
+    .control-button:hover { background-color: var(--control-button-hover-bg); color: var(--control-button-hover-text); }
+    /* .control-button.active já tratado com cores semânticas acima */
+    .control-button:disabled { background-color: var(--control-button-disabled-bg); color: var(--control-button-disabled-text); border-color: var(--control-button-disabled-border); }
+
+    #mainCanvasContainer { background-color: var(--canvas-bg); }
+    .modal-overlay { background-color: var(--modal-overlay-bg); }
+    .modal-content { background-color: var(--modal-content-bg); color: var(--modal-content-text); border: 1px solid var(--border-color-light); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+    .modal-content h3 { border-bottom: 1px solid var(--border-color-light); color: var(--accent-color-light); }
+    .modal-content p, .modal-content ul, .modal-content label { color: var(--modal-content-text); }
+    .modal-content strong { color: var(--warning-color); } /* Amarelo/Laranja para strong */
+    .modal-content code { background-color: var(--code-bg); color: var(--warning-color-dark); padding: 0.2em 0.4em; border-radius: 3px; }
+    .modal-content a { color: var(--accent-color-light); }
+    .close-modal-button { color: var(--close-button-color); }
+    .close-modal-button:hover { color: var(--close-button-hover-color); }
+    .modal-footer { border-top: 1px solid var(--border-color-light); color: var(--text-color-secondary);}
+    .modal-content label { color: var(--modal-label-color);}
+    .modal-content select, .modal-content input[type="range"], .modal-content input[type="number"], .modal-content input[type="text"], .modal-content textarea {
+      border: 1px solid var(--border-color-light); background-color: var(--modal-input-bg); color: var(--modal-content-text);
+    }
+    .modal-content .value-display { color: var(--accent-color-light); }
+    .modal-content hr { background-color: var(--border-color-light); }
+    #hud { background-color: var(--hud-bg); color: var(--text-color-primary); border: 1px solid var(--border-color-medium); }
+    #hud b { color: var(--accent-color-light); }
+    /* Outros spans do HUD (highlight, status-ok, etc.) já usam cores semânticas */
+
+
+    /* Dark Theme (Default) */
+    body.theme-dark {
+        --bg-color: var(--bg-color-dark);
+        --text-color-primary: var(--text-color-dark);
+        --text-color-secondary: #777;
+        --sidebar-bg: var(--sidebar-bg-dark);
+        --border-color-medium: var(--border-color-medium-dark);
+        --border-color-light: var(--border-color-light-dark);
+        --control-button-bg: var(--control-button-bg-dark);
+        --control-button-text: var(--control-button-text-dark);
+        --control-button-border: var(--control-button-border-dark);
+        --control-button-hover-bg: var(--control-button-hover-bg-dark);
+        --control-button-hover-text: var(--control-button-hover-text-dark);
+        --control-button-disabled-bg: var(--control-button-disabled-bg-dark);
+        --control-button-disabled-text: var(--control-button-disabled-text-dark);
+        --control-button-disabled-border: #444;
+        --canvas-bg: #000;
+        --modal-overlay-bg: var(--modal-overlay-bg-dark);
+        --modal-content-bg: var(--modal-content-bg-dark);
+        --modal-content-text: var(--modal-content-text-dark);
+        --modal-label-color: var(--modal-label-color-dark);
+        --modal-input-bg: var(--modal-input-bg-dark);
+        --code-bg: #3a3f4b;
+        --close-button-color: #777;
+        --close-button-hover-color: #ccc;
+        --hud-bg: var(--hud-bg-dark);
+    }
+
+    /* Light Theme */
+    body.theme-light {
+        --bg-color: var(--bg-color-light);
+        --text-color-primary: var(--text-color-light);
+        --text-color-secondary: #555;
+        --sidebar-bg: var(--sidebar-bg-light);
+        --border-color-medium: var(--border-color-medium-light);
+        --border-color-light: var(--border-color-light-light);
+        --control-button-bg: var(--control-button-bg-light);
+        --control-button-text: var(--control-button-text-light);
+        --control-button-border: var(--control-button-border-light);
+        --control-button-hover-bg: var(--control-button-hover-bg-light);
+        --control-button-hover-text: var(--control-button-hover-text-light);
+        --control-button-disabled-bg: var(--control-button-disabled-bg-light);
+        --control-button-disabled-text: var(--control-button-disabled-text-light);
+        --control-button-disabled-border: #ccc;
+        --canvas-bg: #e8e8ee;
+        --modal-overlay-bg: var(--modal-overlay-bg-light);
+        --modal-content-bg: var(--modal-content-bg-light);
+        --modal-content-text: var(--modal-content-text-light);
+        --modal-label-color: var(--modal-label-color-light);
+        --modal-input-bg: var(--modal-input-bg-light);
+        --code-bg: #e8e8f0;
+        --close-button-color: #aaa;
+        --close-button-hover-color: #777;
+        --hud-bg: var(--hud-bg-light);
+
+        /* Ajustes específicos para o tema claro, se as cores semânticas não forem suficientes */
+        --accent-color-light: #0056b3; /* Azul mais escuro para texto sobre fundo claro */
+        --warning-color: #fd7e14; /* Laranja para warning */
+        --error-color: #dc3545; /* Vermelho para erro */
+    }
+
+
+    /* Synth Controls Sidebar Styles */
+    #synthControlsSidebar {
+      position: fixed;
+      top: 8px; /* Alinhado com outros elementos fixos */
+      right: 8px;
+      width: 250px; /* Reduzido um pouco */
+      background-color: var(--sidebar-bg);
+      border: 1px solid var(--border-color-medium);
+      z-index: 1000;
+      padding: 12px;
+      box-shadow: -2px 2px 5px rgba(0,0,0,0.15);
+      border-radius: 5px;
+      overflow-y: auto;
+      max-height: calc(100vh - 16px); /* Considera top/bottom margin */
+      color: var(--text-color-primary);
+      transform: translateX(calc(100% + 10px)); /* Inicialmente escondido (100% + margem) */
+      transition: transform 0.3s ease-in-out;
+    }
+
+    #synthControlsSidebar.open {
+        transform: translateX(0);
+    }
+
+    #synthControlsSidebar h4 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      color: var(--accent-color-light);
+      border-bottom: 1px solid var(--border-color-light);
+      padding-bottom: 8px;
+      font-size: 1.05em;
+    }
+
+    #synthControlsSidebar .control-group {
+      margin-bottom: 10px;
+    }
+    /* V59: Agrupamento para botões de gravação */
+    .audio-recording-controls {
+        display: flex;
+        flex-direction: column; /* Empilha verticalmente por padrão */
+        gap: 6px; /* Espaço entre os botões */
+        margin-top: 10px;
+    }
+     /* Em telas maiores, pode-se colocar lado a lado se desejado, mas coluna é mais simples */
+    @media (min-width: 400px) { /* Ajuste o breakpoint conforme necessário */
+       .audio-recording-controls {
+           /* flex-direction: row; */ /* Mantém coluna para consistência, mas poderia ser row */
+       }
+    }
+
+
+    #synthControlsSidebar label {
+      display: block;
+      font-size: 0.8em; /* Reduzido */
+      margin-bottom: 4px;
+      color: var(--modal-label-color); /* Reutilizando cor de label do modal */
+    }
+
+    #synthControlsSidebar select,
+    #synthControlsSidebar input[type="range"] {
+      width: 100%;
+      padding: 7px; /* Reduzido */
+      border-radius: 3px;
+      border: 1px solid var(--border-color-light);
+      background-color: var(--modal-input-bg); /* Reutilizando cor de input do modal */
+      color: var(--text-color-primary);
+      box-sizing: border-box;
+      font-size: 0.85em;
+    }
+    #synthControlsSidebar input[type="range"] {
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    #synthControlsSidebar .value-display {
+      margin-left: 6px;
+      font-size: 0.85em;
+      color: var(--accent-color-light);
+    }
+
+    /* Feedback visual para botão de gravação */
+    .control-button .recording-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        background-color: red;
+        border-radius: 50%;
+        margin-right: 5px;
+        animation: blinkAnimation 1.5s infinite;
+    }
+    @keyframes blinkAnimation {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+    .control-button.paused .recording-dot {
+        background-color: orange; /* Laranja para pausa */
+        animation: none; /* Sem piscar quando pausado */
+        opacity: 1;
+    }
+
+    /* V65: Arpeggiator Panel Styles (similar to Synth Panel) */
+    #arpeggiatorControlsPanel {
+      position: fixed;
+      top: 8px;
+      right: 55px; /* Default position next to synth button */
+      width: 250px;
+      background-color: var(--sidebar-bg);
+      border: 1px solid var(--border-color-medium);
+      z-index: 999; /* Slightly lower than synth panel if they could overlap, or manage visibility carefully */
+      padding: 12px;
+      box-shadow: -2px 2px 5px rgba(0,0,0,0.15);
+      border-radius: 5px;
+      overflow-y: auto;
+      max-height: calc(100vh - 16px);
+      color: var(--text-color-primary);
+      transform: translateX(calc(100% + 65px)); /* Initially hidden (100% + its own width + button width approx) */
+      transition: transform 0.3s ease-in-out;
+    }
+
+    #arpeggiatorControlsPanel.open {
+        transform: translateX(0);
+    }
+
+    #arpeggiatorControlsPanel h4 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      color: var(--accent-color-light);
+      border-bottom: 1px solid var(--border-color-light);
+      padding-bottom: 8px;
+      font-size: 1.05em;
+    }
+     #arpeggiatorControlsPanel h5 { /* For sub-sections like "Variações" */
+      margin-top: 10px;
+      margin-bottom: 8px;
+      color: var(--accent-color-light);
+      font-size: 0.95em;
+    }
+
+    #arpeggiatorControlsPanel .control-group {
+      margin-bottom: 10px;
+    }
+
+    #arpeggiatorControlsPanel label {
+      display: block;
+      font-size: 0.8em;
+      margin-bottom: 4px;
+      color: var(--modal-label-color);
+    }
+
+    #arpeggiatorControlsPanel select,
+    #arpeggiatorControlsPanel input[type="range"] {
+      width: 100%;
+      padding: 7px;
+      border-radius: 3px;
+      border: 1px solid var(--border-color-light);
+      background-color: var(--modal-input-bg);
+      color: var(--text-color-primary);
+      box-sizing: border-box;
+      font-size: 0.85em;
+    }
+    #arpeggiatorControlsPanel input[type="range"] {
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    #arpeggiatorControlsPanel .value-display {
+      margin-left: 6px;
+      font-size: 0.85em;
+      color: var(--accent-color-light);
+    }
+    /* End V65 Arpeggiator Panel Styles */
+
+    /* Beat Matrix Styles (v74 - Advanced) */
+    #beatMatrixContainer {
+      display: none; /* Inicialmente oculto */
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start; /* Alinha ao topo para permitir scroll */
+      position: absolute; /* Dentro do mainCanvasContainer ou similar */
+      top: 0; left: 0; width: 100%; height: 100%;
+      background-color: rgba(10, 10, 10, 0.95); /* Fundo semi-transparente escuro */
+      z-index: 100; /* Abaixo da sidebar e modais, mas acima do canvas principal */
+      overflow-y: auto; /* Permite scroll vertical se o conteúdo exceder */
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    #beatMatrixContainer.visible {
+      display: flex;
+    }
+
+    #grid { /* ID 'grid' para compatibilidade com beatmatrixexe_v77.js */
+      display: grid;
+      /* grid-template-columns will be set by JS */
+      gap: 5px; /* Reduzido */
+      margin-bottom: 15px; /* Espaço abaixo da grid */
+      padding: 5px;
+      background-color: rgba(20,20,20,0.5);
+      border-radius: 5px;
+    }
+    .pad { /* Classe 'pad' para compatibilidade com beatmatrixexe_v77.js */
+      /* width and height will be set by JS */
+      background: #333;
+      border: 1px solid #777; /* Reduzido */
+      border-radius: 8px; /* Reduzido */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      font-size: 14px; /* Reduzido */
+      color: #ccc;
+      transition: background-color 0.1s, border-color 0.1s, box-shadow 0.1s;
+    }
+    .pad.active {
+      background: #00A86B; /* Verde jade */
+      border-color: #A0D2DB; /* Azul claro */
+      color: #111;
+      box-shadow: 0 0 10px #00A86B; /* Reduzido */
+    }
+    .pad.highlight { /* Usado por MediaPipe */
+      box-shadow: 0 0 6px 3px yellow; /* Reduzido */
+      border-color: yellow;
+    }
+    .pad.sequencer-column-indicator {
+      background-color: #555; /* Mais claro que o padrão #333 */
+      border-color: #aaa;
+    }
+    .pad.sequencer-indicator-secondary { /* v77 element */
+      background-color: #5e5e00;
+    }
+
+
+    /* Controles da Beat Matrix (v74 - Reorganizado e Expandido) */
+    #beatMatrixControlsPanel { /* ID original mantido */
+      display: flex;
+      flex-direction: column;
+      gap: 10px; /* Ajustado o gap */
+      background: rgba(30,30,30,0.85);
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 120; /* Acima da grid */
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      color: white;
+      width: 100%;
+      max-width: 450px; /* Aumentada a largura para acomodar novos controles */
+      margin-bottom: 15px;
+      overflow-y: auto; /* Para caso os controles excedam a altura */
+      max-height: calc(100vh - 200px); /* Limita altura do painel de controle */
+    }
+
+    #beatMatrixControlsPanel .control-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px; /* Ajustado */
+        margin-bottom: 6px; /* Ajustado */
+    }
+     #beatMatrixControlsPanel .control-group-horizontal {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+    #beatMatrixControlsPanel label {
+        font-size: 0.85em;
+        color: var(--modal-label-color);
+        margin-bottom: 2px;
+    }
+    #beatMatrixControlsPanel select,
+    #beatMatrixControlsPanel input[type="number"],
+    #beatMatrixControlsPanel input[type="range"],
+    #beatMatrixControlsPanel button {
+      font-size: 13px;
+      padding: 6px 8px;
+      background-color: var(--control-button-bg);
+      color: var(--control-button-text);
+      border: 1px solid var(--control-button-border);
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    #beatMatrixControlsPanel input[type="range"] { padding: 0;}
+    #beatMatrixControlsPanel input[type="number"] { width: 70px; } /* Para inputs numéricos como offset e fator */
+    #beatMatrixControlsPanel button { cursor: pointer; }
+    #beatMatrixControlsPanel button:hover { background-color: var(--control-button-hover-bg); }
+
+    #bmBpmDisplay, #bpm-display-secondary /* Unificando estilo se necessário */ {
+        font-weight: bold;
+        color: var(--accent-color-light);
+        margin-left: 5px; /* Espaço após o botão play/stop */
+    }
+    #bmGlobalBpmSyncButton.active { background-color: var(--info-color); }
+
+    /* SVG Fader Styles (from beatmatrixexe_v77.html) */
+    .faderContainer { /* Novo container genérico para SVG faders */
+      text-align: center;
+      margin-top: 5px;
+      margin-bottom: 10px;
+    }
+    .faderContainer svg {
+      /* SVG já tem width/height */
+    }
+    .faderContainer .faderTrack {
+      stroke: #505050;
+      stroke-width: 1;
+      fill: url(#faderTrackGradient); /* Reutilizando gradiente */
+    }
+    .faderContainer .faderThumb {
+      stroke-width: 1;
+      cursor: pointer;
+    }
+    .faderContainer .bpmTextDisplay {
+        font-family: Arial, sans-serif;
+        font-size: 14px; /* Ajustado */
+        fill: white;
+        text-anchor: middle;
+    }
+    /* Cores específicas para thumbs */
+    #horizontalBpmFaderSVG #faderThumb { fill: #4CAF50; stroke: #388E3C; }
+    #secondaryBpmFaderSVG #secondaryFaderThumb { fill: #FFC107; stroke: #FFA000; }
+    /* Estilos para faders de barras extras serão definidos dinamicamente ou com classes */
+
+    #extra-bars-section h4 { /* Estilo para o título da seção de barras extras */
+        margin-top: 12px;
+        margin-bottom: 8px;
+        font-size: 0.95em;
+        color: var(--accent-color-light);
+        border-top: 1px solid var(--border-color-light);
+        padding-top: 10px;
+    }
+    #extra-bars-controls-container .extra-bar-controls {
+        border: 1px solid var(--border-color-medium);
+        padding: 8px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+    }
+    #extra-bars-controls-container .extra-bar-controls h5 {
+        margin-top: 0;
+        margin-bottom: 6px;
+        font-size: 0.9em;
+    }
+
+  </style>
+</head>
+<body class="theme-dark">
+
+  <div id="sidebarHandle">☰</div>
+
+  <button id="toggleSynthPanelButtonFixed" class="control-button" title="Mostrar/Ocultar Painel do Sintetizador (Shift+Y)">🎛️</button>
+  <button id="toggleArpPanelButtonFixed" class="control-button" title="Mostrar/Ocultar Painel do Arpejador (Shift+A)">🎼</button>
+  <button id="toggleBeatMatrixButton" class="control-button" title="Mostrar/Ocultar Beat Matrix (Shift+M)" style="position: fixed; top: 8px; right: 102px; z-index: 1002; width: auto; padding: 6px 10px; font-size: 18px;">🥁</button>
+
+
+  <div id="sidebar">
+    <div id="sidebarContent">
+      <!-- Grupo: Geral & Visualização -->
+      <h4><span class="sidebar-group-icon">👁️‍🗨️</span> Geral & Visuais</h4>
+      <button id="info" class="control-button" title="Manual do Usuário (Shift+I)">ℹ️ Manual</button>
+      <button id="infoHudButton" class="control-button" title="Mostrar/Ocultar Info HUD (Shift+H)"> HUD</button>
+      <button id="themeToggleButton" class="control-button" title="Alternar Tema Claro/Escuro (Shift+T)">🌙 Tema</button>
+      <button id="spectatorModeButton" class="control-button" title="Ativar/Desativar Modo Espectador (Shift+S)">👓 Espectador OFF</button>
+
+      <!-- Grupo: Áudio & MIDI -->
+      <h4><span class="sidebar-group-icon">🔊</span> Áudio & MIDI</h4>
+      <button id="internalAudioToggleButton" class="control-button active" title="Ativar/Desativar Áudio Interno (Shift+V)">🔊 Áudio ON</button>
+      <button id="midiToggleButton" class="control-button active" title="Ativar/Desativar Envio MIDI (M)">🎹 MIDI ON</button>
+      <button id="midiFeedbackToggleButton" class="control-button" title="Ativar/Desativar Feedback MIDI para OSC (Shift+F)">🎤 MIDI In OFF</button>
+      <button id="playPauseButton" class="control-button" title="Play/Pause Sequenciador Formas (Espaço)">▶️ Play Formas</button>
+      <div class="control-group" style="margin-top: 8px;">
+          <label for="globalBpmSlider" style="font-size: 0.85em; color: var(--modal-label-color); display: block; margin-bottom: 2px;">BPM Global: <span id="globalBpmValueDisplay" style="color: var(--accent-color-light); font-weight: bold;">120</span></label>
+          <input type="range" id="globalBpmSlider" min="30" max="300" value="120" style="width: 100%; margin-top: 0;">
+      </div>
+
+
+      <!-- Grupo: OSC & DMX -->
+      <h4><span class="sidebar-group-icon">📡</span> OSC & DMX</h4>
+      <button id="oscConfigButton" class="control-button" title="Configurações OSC (Shift+K)">📡 Config OSC</button>
+      <button id="syncDMXNotesButton" class="control-button" title="Sincronizar Notas MIDI como OSC para controle DMX (Shift+D)">🎶 <span class="button-text">Sync DMX</span> <span class="status-indicator">OFF</span></button>
+      <button id="recordOSCButton" class="control-button" title="Gravar/Parar Gravação de Loop OSC (Shift+R)">⏺️ <span class="button-text">Gravar OSC</span></button>
+      <button id="playOSCLoopButton" class="control-button" disabled title="Tocar/Parar Loop OSC Gravado (Shift+P)">▶️ <span class="button-text">Loop OSC</span></button>
+
+      <!-- Grupo: Ferramentas & Configurações Avançadas -->
+      <h4><span class="sidebar-group-icon">🛠️</span> Ferramentas & Avançado</h4>
+      <button id="settingsButton" class="control-button" title="Configurações MIDI, Câmera, Áudio Global (Shift+C)">⚙️ Configurações</button>
+      <button id="shapePresetButton" class="control-button" title="Gerenciar Presets de Formas (Shift+B)">💾 Presets</button>
+      <button id="openGestureMappingModalButton" class="control-button" title="Configurar Mapeamento de Gestos (Shift+G)">🖐️⇢🎹 Mapear Gestos</button>
+      <button id="gestureSimToggleButton" class="control-button" title="Simular Gestos (Dev Mode)">🤖 <span class="button-text">Simulador</span> <span class="status-indicator">OFF</span></button>
+    </div>
+  </div>
+
+  <div id="mainCanvasContainer">
+    <canvas id="canvas"></canvas>
+    <!-- Beat Matrix Container (v74 - Avançado) -->
+    <div id="beatMatrixContainer">
+        <div id="beatMatrixControlsPanel">
+            <!-- Controles Barra Principal -->
+            <div class="control-group-horizontal">
+                <button id="bmPlayStopButton">Play Barra Prin</button> <!-- ID original mantido -->
+                <div id="bmBpmDisplay">BPM Prin: 120</div> <!-- ID original mantido -->
+            </div>
+            <div class="faderContainer"> <!-- Novo container para o fader SVG -->
+                <svg id="horizontalBpmFaderSVG" width="250" height="50"> <!-- Ajustada altura -->
+                    <defs>
+                        <linearGradient id="faderTrackGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" style="stop-color:#a0a0a0;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#e0e0e0;stop-opacity:1" />
+                        </linearGradient>
+                    </defs>
+                    <rect class="faderTrack" x="10" y="15" width="230" height="10" rx="5" ry="5"/>
+                    <rect id="faderThumb" class="faderThumb" x="10" y="10" width="20" height="20" rx="3" ry="3"/>
+                    <text id="bpmTextDisplay" class="bpmTextDisplay" x="125" y="40">BPM: 120</text>
+                </svg>
+            </div>
+            <div class="control-group">
+                <label for="bmMidiOutputSelect">Saída MIDI (Beat Matrix):</label>
+                <select id="bmMidiOutputSelect"></select> <!-- ID original mantido -->
+            </div>
+             <button id="bmGlobalBpmSyncButton" title="Sincronizar BPM com Global">Sincronizar com Global</button> <!-- ID original mantido -->
+
+            <hr style="border-color: #555; margin: 10px 0;">
+
+            <!-- Controles Barra Secundária (integrados de beatmatrixexe_v77.html) -->
+            <h4>Barra Secundária</h4>
+            <div class="control-group-horizontal">
+                <button id="play-stop-button-secondary">Play Barra Sec</button>
+                <div id="bpm-display-secondary">BPM Sec: 120</div>
+            </div>
+            <div class="faderContainer">
+                <svg id="secondaryBpmFaderSVG" width="250" height="50">
+                    <rect class="faderTrack" x="10" y="15" width="230" height="10" rx="5" ry="5"/>
+                    <rect id="secondaryFaderThumb" class="faderThumb" x="10" y="10" width="20" height="20" rx="3" ry="3"/>
+                    <text id="secondaryBpmTextDisplay" class="bpmTextDisplay" x="125" y="40">BPM Sec: 120</text>
+                </svg>
+            </div>
+            <div class="control-group">
+                <label for="secondaryNoteOffsetInput">Offset Semitons 2ª Barra:</label>
+                <input type="number" id="secondaryNoteOffsetInput" value="12">
+            </div>
+            <div class="control-group">
+                <label for="orientationBar2Select">Orientação 2ª Barra:</label>
+                <select id="orientationBar2Select">
+                  <option value="vertical" selected>Vertical</option>
+                  <option value="horizontal">Horizontal</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="directionBar2Select">Sentido 2ª Barra:</label>
+                <select id="directionBar2Select">
+                  <!-- Opções preenchidas por JS -->
+                </select>
+            </div>
+            <!-- Controles de Sincronização da Barra Secundária (se aplicável, ou adaptar para nova lógica) -->
+            <!-- <div class="control-group">
+                <label for="secondarySyncSpeedDirection">Dobra Velocidade 2ª Barra:</label>
+                <select id="secondarySyncSpeedDirection">
+                <option value="up" selected>Para Cima (Mais Rápido)</option>
+                <option value="down">Para Baixo (Mais Lento)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="secondarySyncFactor">Fator Sinc. 2ª Barra (x Vezes):</label>
+                <input type="number" id="secondarySyncFactor" value="2" min="1" step="1">
+            </div> -->
+
+            <hr style="border-color: #555; margin: 10px 0;">
+
+            <!-- Controles Gerais da Grid (Linhas, Colunas, Tamanho Pad) -->
+            <h4>Configuração da Grid</h4>
+            <div class="control-group">
+                <label for="bmRowsInput">Linhas (Rows): <span id="bmRowsValueDisplay">4</span></label>
+                <input type="range" id="bmRowsInput" min="1" max="16" value="4"> <!-- Max aumentado para 16 -->
+            </div>
+            <div class="control-group">
+                <label for="bmColsInput">Colunas (Cols): <span id="bmColsValueDisplay">4</span></label>
+                <input type="range" id="bmColsInput" min="1" max="16" value="4">
+            </div>
+            <div class="control-group">
+                <label for="bmPadSizeInput">Tamanho Pad (px): <span id="bmPadSizeValueDisplay">60</span></label>
+                <input type="range" id="bmPadSizeInput" min="20" max="100" value="60">
+            </div>
+            <div class="control-group">
+                <label for="bmClearButton">Ações:</label>
+                <button id="bmClearButton">Limpar Grid</button> <!-- ID original mantido -->
+            </div>
+
+            <hr style="border-color: #555; margin: 10px 0;">
+            <!-- Seção para Barras Extras (integrada de beatmatrixexe_v77.html) -->
+            <div id="extra-bars-section">
+                <h4>Barras Extras</h4>
+                <button id="add-extra-bar-button">Adicionar Barra Extra</button>
+                <div id="extra-bars-controls-container">
+                <!-- Controles para barras extras serão adicionados aqui por JS -->
+                </div>
+            </div>
+        </div>
+        <div id="grid"></div> <!-- ID 'grid' mantido para compatibilidade -->
+    </div>
+    <!-- Fim Beat Matrix Container -->
+  </div>
+
+
+  <!-- MODAL DE CONFIGURAÇÃO OSC -->
+  <div id="oscConfigModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeOscConfigModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Configurações OSC</h3>
+      <p>Configure o endereço IP e a Porta do servidor WebSocket OSC. Estas configurações são salvas localmente no seu navegador e aplicadas ao clicar em "Salvar e Reconectar".</p>
+      <label for="oscHostInput">IP do Servidor OSC (Ex: 127.0.0.1 ou 192.168.0.105):</label>
+      <input type="text" id="oscHostInput" placeholder="127.0.0.1">
+      <label for="oscPortInput">Porta do Servidor OSC (Ex: 8080):</label>
+      <input type="number" id="oscPortInput" placeholder="8080" min="1" max="65535">
+      <div class="button-group extra-margin-top">
+        <button id="saveOscConfigButton" class="control-button">Salvar e Reconectar</button>
+        <button id="closeOscConfigModalBtnGeneric" type="button" class="control-button">Fechar</button>
+      </div>
+      <div class="modal-footer">
+        <p>Ao abrir via <code>file:///</code>, o IP padrão é <code>127.0.0.1</code>. Para uso em rede (ex: celular), insira o IP do computador onde <code>osc_relayXX.py</code> está rodando.</p>
+        <p>Certifique-se que o script Python está escutando na porta configurada (padrão <code>8080</code>) e em <code>0.0.0.0</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- V65: Painel do Arpejador (substitui o modal anterior) -->
+  <div id="arpeggiatorControlsPanel" aria-label="Controles do Arpejador">
+    <h4>Controles do Arpejador</h4>
+    <div class="control-group">
+      <label for="arpPanelStyleSelect">Estilo:</label>
+      <select id="arpPanelStyleSelect">
+        <!-- Options will be populated by JavaScript -->
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="arpPanelBPM">BPM (Arp Formas): <span id="arpPanelBPMValue">120</span></label>
+      <input type="range" id="arpPanelBPM" min="30" max="300" value="120" disabled> <!-- V71: Desabilitado, controlado pelo global -->
+    </div>
+    <div class="control-group">
+      <label for="arpPanelNoteInterval">Intervalo (ms): <span id="arpPanelNoteIntervalValue">500</span></label>
+      <input type="range" id="arpPanelNoteInterval" min="50" max="2000" value="500" disabled> <!-- V71: Desabilitado, derivado do BPM global -->
+    </div>
+    <hr>
+    <h5>Variações</h5>
+    <div class="control-group">
+      <label for="arpPanelRandomness">Randomness: <span id="arpPanelRandomnessValue">0</span>%</label>
+      <input type="range" id="arpPanelRandomness" min="0" max="100" value="0" step="1">
+    </div>
+    <div class="control-group">
+      <label for="arpPanelSwing">Swing: <span id="arpPanelSwingValue">0</span>%</label>
+      <input type="range" id="arpPanelSwing" min="0" max="100" value="0" step="1">
+    </div>
+    <div class="control-group">
+      <label for="arpPanelGhostNoteChance">Ghost Notes: <span id="arpPanelGhostNoteChanceValue">0</span>%</label>
+      <input type="range" id="arpPanelGhostNoteChance" min="0" max="100" value="0" step="1">
+    </div>
+  </div>
+  <!-- FIM V65: Painel do Arpejador -->
+
+
+  <!-- Modal de Informações -->
+  <div id="infoModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Manual do Usuário - MIDI Shape Manipulator v74</h3>
+
+      <p>O MIDI Shape Manipulator (MSM) é uma aplicação web interativa que transforma gestos de mão, capturados pela webcam, em música e visualizações dinâmicas. A v74 introduz funcionalidades avançadas na Beat Matrix, incluindo múltiplas barras de sequenciamento e controles expandidos.</p>
+
+      <hr>
+      <h4>Novidades da v74</h4>
+      <ul>
+        <li><strong>Beat Matrix Avançada:</strong>
+            <ul>
+                <li>Suporte para uma barra de sequenciador secundária com BPM, offset de nota, orientação e direção configuráveis.</li>
+                <li>Capacidade de adicionar barras de sequenciador extras, cada uma com seus próprios controles (funcionalidade a ser totalmente implementada em <code>beatmatrix74.js</code>).</li>
+                <li>Novos faders SVG para controle de BPM da barra principal e secundária.</li>
+                <li>Painel de controle da Beat Matrix reorganizado para acomodar os novos recursos.</li>
+            </ul>
+        </li>
+        <li><strong>Estrutura de Arquivos:</strong>
+            <ul>
+                <li><code>index74.html</code>: Interface atualizada com os novos elementos da Beat Matrix.</li>
+                <li><code>main74.js</code>: Lógica para integrar os novos componentes HTML e funcionalidades de múltiplas barras.</li>
+                <li><code>beatmatrix74.js</code>: Lógica de sequenciamento para múltiplas barras, sincronização e estado expandido.</li>
+                <li><code>synth74.js</code>: Cópia direta de <code>synth73.js</code> (sem alterações).</li>
+            </ul>
+        </li>
+      </ul>
+      <hr>
+      <h4>Iniciando</h4>
+      <ol>
+        <li><strong>Permissão da Câmera:</strong> Conceda permissão para usar a webcam.</li>
+        <li><strong>Áudio Interno:</strong> Ativado por padrão. Clique na página para ativar o contexto de áudio.</li>
+        <li><strong>Beat Matrix:</strong> Clique no botão 🥁 para mostrar/ocultar a Beat Matrix.
+            <ul>
+                <li>Use os controles no painel da Beat Matrix para configurar a grade, BPMs, saídas MIDI e as barras de sequenciamento.</li>
+                <li>Clique nos pads para ativar/desativar notas.</li>
+                <li>Use os botões "Play Barra Prin", "Play Barra Sec" para iniciar/parar os respectivos sequenciadores.</li>
+            </ul>
+        </li>
+        <li><strong>Formas:</strong> Quando a Beat Matrix está oculta, use as mãos para interagir com as formas no canvas. Use o botão "Play Formas" na barra lateral para o arpejador das formas.</li>
+        <li><strong>BPM Global:</strong> Use o fader "BPM Global" na barra lateral para controlar o tempo de execução base.</li>
+      </ol>
+
+      <hr>
+      <h4>Interface Principal</h4>
+      <ul>
+        <li><strong>Barra Lateral (Esquerda):</strong> Funcionalidades principais, incluindo o fader de BPM Global e Play/Pause para as formas.</li>
+        <li><strong>Painel da Beat Matrix (Quando Visível):</strong> Controles dedicados para a grade e múltiplas barras de sequenciamento.</li>
+        <li><strong>Canvas Principal:</strong> Visualização das formas (quando a Beat Matrix está oculta).</li>
+      </ul>
+      <hr>
+      <h4>Atalhos de Teclado (Padrão)</h4>
+      <ul>
+        <li><code>Shift + M</code>: Mostrar/Ocultar Beat Matrix</li>
+        <li><code>Espaço</code>: Play/Pause Sequenciador Formas (quando Beat Matrix oculta).</li>
+        <li><em>(Outros atalhos permanecem os mesmos da v73)</em></li>
+        </ul>
+
+      <div class="modal-footer">
+        <p>Desenvolvido por <a href="https://www.instagram.com/leocarvalho.exe" target="_blank" rel="noopener noreferrer">Leonardo Carvalho</a> — MSM Project 2024</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configurações MIDI e Câmera -->
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeSettingsModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Configurações Globais</h3>
+      <!-- Será reorganizado em abas ou seções aqui -->
+      <label for="midiOutputSelect">Porta de Saída MIDI (Global/Formas):</label>
+      <select id="midiOutputSelect"></select>
+      <label for="midiInputSelect">Porta de Entrada MIDI (para Feedback OSC):</label>
+      <select id="midiInputSelect"></select>
+      <hr>
+      <label for="cameraSelect">Selecionar Câmera:</label>
+      <select id="cameraSelect">
+        <option value="">Padrão do Navegador</option>
+      </select>
+      <hr>
+      <h4>Configurações de Áudio Interno (Global)</h4>
+      <p><em>Controles detalhados do sintetizador estão no painel dedicado (🎛️). Estes são os padrões.</em></p>
+      <label for="audioWaveformSelect">Forma de Onda (Padrão):</label>
+      <select id="audioWaveformSelect">
+        <option value="sine">Sine (Senoidal)</option>
+        <option value="square">Square (Quadrada)</option>
+        <option value="sawtooth">Sawtooth (Dente de Serra)</option>
+        <option value="triangle">Triangle (Triangular)</option>
+        <option value="noise">Noise (Ruído)</option>
+        <option value="pulse">Pulse</option>
+      </select>
+      <label for="audioMasterVolume">Volume Master: <span id="audioMasterVolumeValue" class="value-display">0.5</span></label>
+      <input type="range" id="audioMasterVolume" min="0" max="1" step="0.01" value="0.5">
+
+      <!-- Controles ADSR -->
+      <h5>Envelope ADSR (Padrão)</h5>
+      <label for="audioAttackSlider">Attack: <span id="audioAttackValue" class="value-display">0.01</span>s</label>
+      <input type="range" id="audioAttackSlider" min="0.001" max="2" step="0.001" value="0.01">
+
+      <label for="audioDecaySlider">Decay: <span id="audioDecayValue" class="value-display">0.1</span>s</label>
+      <input type="range" id="audioDecaySlider" min="0.001" max="2" step="0.001" value="0.1">
+
+      <label for="audioSustainSlider">Sustain Level: <span id="audioSustainValue" class="value-display">0.7</span></label>
+      <input type="range" id="audioSustainSlider" min="0" max="1" step="0.01" value="0.7">
+
+      <label for="audioReleaseSlider">Release: <span id="audioReleaseValue" class="value-display">0.2</span>s</label>
+      <input type="range" id="audioReleaseSlider" min="0.001" max="3" step="0.001" value="0.2">
+      <!-- Fim Controles ADSR -->
+      <!-- (Outros controles de áudio como Filtro, LFO, Delay, Reverb são omitidos aqui para brevidade, mas seriam iguais à v71) -->
+
+      <div class="modal-footer"><p>As configurações de MIDI, Câmera e Áudio são aplicadas e salvas automaticamente.</p></div>
+    </div>
+  </div>
+
+  <!-- Modal de Controle OSC -->
+  <div id="oscControlModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeOscControlModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Painel de Controle OSC</h3>
+      <label for="oscAddressInput">Endereço OSC:</label>
+      <input type="text" id="oscAddressInput" placeholder="/exemplo/endereco 123 'texto'">
+      <label for="oscArgsInput">Argumentos (JSON Array ou separados por espaço):</label>
+      <input type="text" id="oscArgsInput" placeholder='["texto", 123, 0.5]  ou  texto 123 0.5'>
+      <button id="sendTestOSCButton" class="control-button">Enviar Mensagem OSC</button>
+      <hr>
+      <label for="oscLoopDurationInput">Duração do Loop OSC Gravado (ms):</label>
+      <input type="number" id="oscLoopDurationInput" value="5000" min="100" step="100">
+      <hr>
+      <label for="oscLogTextarea">Log de Mensagens OSC (Enviadas/Recebidas):</label>
+      <textarea id="oscLogTextarea" readonly placeholder="Mensagens OSC do painel, loop e UDP aparecerão aqui..."></textarea>
+      <button id="clearOscLogButton" class="control-button">Limpar Log</button>
+      <button id="exportOscLogButton" class="control-button">Exportar Log</button>
+      <div class="modal-footer"><p>Use para testar, controlar ou monitorar OSC.</p></div>
+    </div>
+  </div>
+
+  <video id="video"></video>
+
+  <!-- Modal de Presets de Formas -->
+  <div id="shapePresetModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeShapePresetModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Gerenciador de Presets de Formas</h3>
+      <label for="shapeToPresetSelect">Selecionar Forma para Preset:</label>
+      <select id="shapeToPresetSelect"></select>
+      <label for="presetNameInput">Nome do Preset:</label>
+      <input type="text" id="presetNameInput" placeholder="Ex: Meu Preset Incrível">
+      <div class="button-group">
+        <button id="saveShapePresetButton" class="control-button">Salvar Preset da Forma Atual</button>
+        <button id="loadShapePresetButton" class="control-button">Carregar Preset na Forma Atual</button>
+      </div>
+      <label for="savedPresetsSelect">Presets Salvos:</label>
+      <select id="savedPresetsSelect" size="5"></select>
+      <div class="button-group">
+        <button id="deleteSelectedPresetButton" class="control-button">Deletar Preset Selecionado</button>
+      </div>
+      <hr>
+      <h4>Importar / Exportar Todos os Presets</h4>
+      <div class="button-group">
+        <button id="exportAllPresetsButton" class="control-button">Exportar Todos (JSON)</button>
+        <button id="importAllPresetsButton" class="control-button">Importar (JSON)</button>
+      </div>
+      <input type="file" id="importPresetFileInput" accept=".json" title="Importar arquivo de presets JSON">
+      <div class="modal-footer"><p>Salve e carregue configurações de formas. Presets são salvos localmente.</p></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/osc-js/lib/osc.min.js"></script>
+  <!-- Scripts da aplicação v75 -->
+  <script src="synth75.js" defer></script>
+  <script src="beatmatrix75.js" defer></script>
+  <script src="main75.js" defer></script>
+
+  <div id="hud" aria-live="polite" aria-atomic="true">
+    <span id="hudTextContent"></span>
+    <button id="toggleOSCConnectionButton" class="control-button" title="Conectar/Desconectar OSC" style="margin-left: 10px; padding: 5px 8px; font-size: 11px; display: inline-block; width: auto;">📡 Conectar OSC</button>
+    <button id="reconnectOSCButton" class="control-button" title="Tentar Reconectar OSC" style="display: none; margin-left: 5px; padding: 5px 8px; font-size: 11px; width: auto;">Reconectar</button>
+  </div>
+
+  <div id="synthControlsSidebar" aria-label="Controles do Sintetizador">
+    <h4>Controles do Sintetizador</h4>
+    <div class="control-group">
+      <label for="scWaveformSelect">Forma de Onda:</label>
+      <select id="scWaveformSelect">
+        <option value="sine">Sine</option>
+        <option value="square">Square</option>
+        <option value="sawtooth">Sawtooth</option>
+        <option value="triangle">Triangle</option>
+        <option value="noise">Noise</option>
+        <option value="pulse">Pulse</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="scMasterVolume">Volume: <span id="scMasterVolumeValue">0.5</span></label>
+      <input type="range" id="scMasterVolume" min="0" max="1" step="0.01" value="0.5">
+    </div>
+    <div class="control-group">
+      <label for="scAttack">Attack: <span id="scAttackValue">0.010</span>s</label>
+      <input type="range" id="scAttack" min="0.001" max="2" step="0.001" value="0.01">
+    </div>
+    <div class="control-group">
+      <label for="scDecay">Decay: <span id="scDecayValue">0.100</span>s</label>
+      <input type="range" id="scDecay" min="0.001" max="2" step="0.001" value="0.1">
+    </div>
+    <div class="control-group">
+      <label for="scSustain">Sustain: <span id="scSustainValue">0.70</span></label>
+      <input type="range" id="scSustain" min="0" max="1" step="0.01" value="0.7">
+    </div>
+    <div class="control-group">
+      <label for="scRelease">Release: <span id="scReleaseValue">0.200</span>s</label>
+      <input type="range" id="scRelease" min="0.001" max="3" step="0.001" value="0.2">
+    </div>
+    <!-- (Outros controles do synth como Distorção, Filtro, LFO, Delay, Reverb, BPM, Gravação de Áudio são omitidos para brevidade, mas seriam iguais à v71) -->
+     <div class="control-group">
+      <label for="scDistortion">Distorção: <span id="scDistortionValue">0</span>%</label>
+      <input type="range" id="scDistortion" min="0" max="100" step="1" value="0">
+    </div>
+    <div class="control-group">
+      <label for="scFilterCutoff">Filtro Cutoff: <span id="scFilterCutoffValue">20000</span> Hz</label>
+      <input type="range" id="scFilterCutoff" min="20" max="20000" step="1" value="20000">
+    </div>
+    <div class="control-group">
+      <label for="scFilterResonance">Filtro Res.: <span id="scFilterResonanceValue">1</span></label>
+      <input type="range" id="scFilterResonance" min="0.1" max="30" step="0.1" value="1">
+    </div>
+    <h4>LFO</h4>
+    <div class="control-group">
+      <label for="scLfoWaveform">LFO Onda:</label>
+      <select id="scLfoWaveform">
+        <option value="sine">Sine</option>
+        <option value="square">Square</option>
+        <option value="sawtooth">Sawtooth</option>
+        <option value="triangle">Triangle</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="scLfoRate">LFO Rate: <span id="scLfoRateValue">5</span> Hz</label>
+      <input type="range" id="scLfoRate" min="0.1" max="20" step="0.1" value="5">
+    </div>
+    <div class="control-group">
+      <label for="scLfoPitchDepth">LFO Pitch Depth: <span id="scLfoPitchDepthValue">0</span> Hz</label>
+      <input type="range" id="scLfoPitchDepth" min="0" max="50" step="0.1" value="0">
+    </div>
+    <div class="control-group">
+      <label for="scLfoFilterDepth">LFO Filtro Depth: <span id="scLfoFilterDepthValue">0</span> Hz</label>
+      <input type="range" id="scLfoFilterDepth" min="0" max="5000" step="10" value="0">
+    </div>
+    <h4>Delay</h4>
+    <div class="control-group">
+      <label for="scDelayTime">Delay Time: <span id="scDelayTimeValue">0.50</span> s</label>
+      <input type="range" id="scDelayTime" min="0.01" max="2" step="0.01" value="0.5">
+    </div>
+    <div class="control-group">
+      <label for="scDelayFeedback">Delay Feedback: <span id="scDelayFeedbackValue">0.3</span></label>
+      <input type="range" id="scDelayFeedback" min="0" max="0.95" step="0.01" value="0.3">
+    </div>
+    <div class="control-group">
+      <label for="scDelayMix">Delay Mix: <span id="scDelayMixValue">0.0</span></label>
+      <input type="range" id="scDelayMix" min="0" max="1" step="0.01" value="0">
+    </div>
+    <h4>Reverb</h4>
+    <div class="control-group">
+      <label for="scReverbMix">Reverb Mix: <span id="scReverbMixValue">0.0</span></label>
+      <input type="range" id="scReverbMix" min="0" max="1" step="0.01" value="0">
+    </div>
+    <h4>Arpeggiator BPM (Global)</h4>
+    <div class="control-group">
+      <label for="scBPM">BPM: <span id="scBPMValue">120</span></label>
+      <input type="range" id="scBPM" min="30" max="300" step="1" value="120" disabled>
+    </div>
+    <button id="openGestureMappingModalFromSynthPanel" class="control-button" title="Configurar Mapeamento de Gestos (Shift+G)">🖐️⇢🎹 Mapear Gestos</button>
+    <h4>Gravação de Áudio</h4>
+    <div class="control-group audio-recording-controls">
+      <button id="recordAudioButton" class="control-button">⏺️ Gravar Áudio</button>
+      <button id="pauseAudioButton" class="control-button" disabled>⏸️ Pausar</button>
+      <button id="saveAudioButton" class="control-button" disabled>💾 Salvar Áudio</button>
+    </div>
+  </div>
+
+  <!-- V64: Modal de Mapeamento de Gestos -->
+  <div id="gestureMappingModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeGestureMappingModal" class="close-modal-button" title="Fechar">&times;</button>
+      <h3>Mapeamento de Gestos para Sintetizador</h3>
+      <p>Crie até 3 mapeamentos de gestos ou propriedades da forma para controlar parâmetros do sintetizador em tempo real.</p>
+      <div id="gestureMappingModalContent"></div>
+      <div class="button-group extra-margin-top">
+        <button id="addGestureMappingButton" class="control-button">Adicionar Novo Mapeamento</button>
+        <button id="resetGestureMappingsButton" class="control-button">Resetar Mapeamentos</button>
+      </div>
+      <hr>
+      <h4>Mapeamentos Ativos:</h4>
+      <ul id="activeGestureMappingsList"><li>Nenhum mapeamento ativo.</li></ul>
+      <div class="modal-footer"><p>As alterações são aplicadas e salvas automaticamente.</p></div>
+    </div>
+  </div>
+</body>
+</html>
