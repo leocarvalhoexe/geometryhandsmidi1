@@ -180,7 +180,8 @@ let beatMatrix = {
         this.secondarySyncFactor = this.loadSetting('bm_secondary_syncFactor', 2);
 
         // Barras Extras
-        this.extraBars = this.loadSetting('bm_extraBars', []);
+        const loadedExtraBars = this.loadSetting('bm_extraBars', []);
+        this.extraBars = Array.isArray(loadedExtraBars) ? loadedExtraBars : [];
         this.nextExtraBarId = this.loadSetting('bm_nextExtraBarId', 0);
 
 
@@ -506,7 +507,9 @@ let beatMatrix = {
          // Após recriar os pads, reaplicar indicadores de step se as barras estiverem tocando
         if (this.isPlaying) this.highlightCurrentStep();
         if (this.isPlayingSecondary) this.highlightCurrentStepSecondary();
-        this.extraBars.forEach(bar => { if (bar.isPlaying) this.highlightCurrentStepExtra(bar); });
+        if (Array.isArray(this.extraBars)) {
+            this.extraBars.forEach(bar => { if (bar.isPlaying) this.highlightCurrentStepExtra(bar); });
+        }
     },
 
     togglePadState: function(row, col) { /* ... (mesma lógica da v73) ... */
@@ -551,13 +554,15 @@ let beatMatrix = {
         }
 
         // Barras Extras
-        this.extraBars.forEach(bar => {
-            bar.effectiveBpm = this._calculateEffectiveBpmExtra(bar);
-            this.updateBPMFaderVisuals(`extra_${bar.id}`, bar.bpm, bar); // Fader mostra valor base
-            if (bar.dom?.bpmDisplay) {
-                 bar.dom.bpmDisplay.textContent = `BPM Extra: ${Math.round(bar.effectiveBpm)}`;
-            }
-        });
+        if (Array.isArray(this.extraBars)) {
+            this.extraBars.forEach(bar => {
+                bar.effectiveBpm = this._calculateEffectiveBpmExtra(bar);
+                this.updateBPMFaderVisuals(`extra_${bar.id}`, bar.bpm, bar); // Fader mostra valor base
+                if (bar.dom?.bpmDisplay) {
+                     bar.dom.bpmDisplay.textContent = `BPM Extra: ${Math.round(bar.effectiveBpm)}`;
+                }
+            });
+        }
     },
 
     updateBPMFaderVisuals: function(barType, bpmValue, barInstance = null) {
@@ -621,7 +626,9 @@ let beatMatrix = {
             if (this.isPlaying) this.restartSequencerTimer();
             // Se barras secundárias/extras estiverem tocando e sincronizadas, seus timers também precisam ser atualizados
             if (this.isPlayingSecondary) this.restartSequencerTimerSecondary();
-            this.extraBars.forEach(bar => { if (bar.isPlaying) this.restartSequencerTimerExtra(bar); });
+            if (Array.isArray(this.extraBars)) {
+                this.extraBars.forEach(bar => { if (bar.isPlaying) this.restartSequencerTimerExtra(bar); });
+            }
         }
     },
 
@@ -638,7 +645,9 @@ let beatMatrix = {
             this.restartSequencerTimer();
             // Se outras barras estiverem configuradas para sincronizar, iniciar/ressincronizar elas
             if (this.isPlayingSecondary) this.synchronizeSecondaryBar(true);
-            this.extraBars.forEach(bar => { if (bar.isPlaying) this.synchronizeExtraBar(bar, true); });
+            if (Array.isArray(this.extraBars)) {
+                this.extraBars.forEach(bar => { if (bar.isPlaying) this.synchronizeExtraBar(bar, true); });
+            }
         } else {
             if (this.timerId) clearInterval(this.timerId);
             this.timerId = null;
@@ -670,7 +679,9 @@ let beatMatrix = {
         }
         if (this.currentStep === 0) { // Loop da barra principal
             if (this.isPlayingSecondary) this.synchronizeSecondaryBar(true);
-            this.extraBars.forEach(bar => { if (bar.isPlaying) this.synchronizeExtraBar(bar, true); });
+            if (Array.isArray(this.extraBars)) {
+                this.extraBars.forEach(bar => { if (bar.isPlaying) this.synchronizeExtraBar(bar, true); });
+            }
         }
     },
     highlightCurrentStep: function() { /* ... (adaptado da v73, usa classe 'sequencer-column-indicator') ... */
@@ -944,7 +955,7 @@ let beatMatrix = {
         loadedBarsData.forEach(barData => {
             this.addExtraBarFromData(barData); // Nova função para adicionar a partir de dados salvos
         });
-        this.nextExtraBarId = Math.max(tempNextId, ...this.extraBars.map(b => b.id + 1), 0);
+        this.nextExtraBarId = Math.max(tempNextId, ...(Array.isArray(this.extraBars) ? this.extraBars.map(b => b.id + 1) : [0]), 0);
 
 
     },
@@ -1176,11 +1187,13 @@ let beatMatrix = {
                         if (this.sendMidiNoteOff) this.sendMidiNoteOff(noteToStop + this.secondaryNoteOffset, 9, -1, 'beatmatrix');
                     }
                     if (barSourceToClear.startsWith('extra_') || barSourceToClear === 'all') {
-                        this.extraBars.forEach(bar => {
-                            if (barSourceToClear === 'all' || `extra_${bar.id}` === barSourceToClear) {
-                                if (this.sendMidiNoteOff) this.sendMidiNoteOff(noteToStop + bar.noteOffset, 9, -1, 'beatmatrix');
-                            }
-                        });
+                        if (Array.isArray(this.extraBars)) {
+                            this.extraBars.forEach(bar => {
+                                if (barSourceToClear === 'all' || `extra_${bar.id}` === barSourceToClear) {
+                                    if (this.sendMidiNoteOff) this.sendMidiNoteOff(noteToStop + bar.noteOffset, 9, -1, 'beatmatrix');
+                                }
+                            });
+                        }
                     }
                 }
             }
@@ -1189,9 +1202,11 @@ let beatMatrix = {
     stopAllBars: function() { // Nova função para parar todas as barras da BM
         if (this.isPlaying) this.togglePlayback();
         if (this.isPlayingSecondary) this.togglePlaybackSecondary();
-        this.extraBars.forEach(bar => {
-            if (bar.isPlaying) this.togglePlaybackExtra(bar);
-        });
+        if (Array.isArray(this.extraBars)) {
+            this.extraBars.forEach(bar => {
+                if (bar.isPlaying) this.togglePlaybackExtra(bar);
+            });
+        }
         this.logDebug("Todas as barras da Beat Matrix paradas.");
     },
 
@@ -1199,9 +1214,11 @@ let beatMatrix = {
         let info = `<b>BeatMatrix:</b> Grid ${this.rows}x${this.cols}<br>`;
         info += `&nbsp;&nbsp;Barra Principal: ${this.isPlaying ? '▶️' : '⏹️'} BPM: ${((this.useGlobalBPM && this.getGlobalBPMCallback) ? this.getGlobalBPMCallback() : this.currentBPM).toFixed(0)}<br>`;
         info += `&nbsp;&nbsp;Barra Secundária: ${this.isPlayingSecondary ? '▶️' : '⏹️'} BPM: ${this.effectiveBpmSecondary.toFixed(0)} (Offset: ${this.secondaryNoteOffset})<br>`;
-        this.extraBars.forEach(bar => {
-            info += `&nbsp;&nbsp;Barra Extra ${bar.id + 1}: ${bar.isPlaying ? '▶️' : '⏹️'} BPM: ${bar.effectiveBpm.toFixed(0)} (Offset: ${bar.noteOffset})<br>`;
-        });
+        if (Array.isArray(this.extraBars)) {
+            this.extraBars.forEach(bar => {
+                info += `&nbsp;&nbsp;Barra Extra ${bar.id + 1}: ${bar.isPlaying ? '▶️' : '⏹️'} BPM: ${bar.effectiveBpm.toFixed(0)} (Offset: ${bar.noteOffset})<br>`;
+            });
+        }
         return info;
     }
 };
