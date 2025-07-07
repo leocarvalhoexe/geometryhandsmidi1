@@ -1,10 +1,10 @@
 // ==========================================================================
-// MIDI SHAPE MANIPULATOR v72 - main72.js
+// MIDI SHAPE MANIPULATOR v73 - main73.js
 // ==========================================================================
 
 // === CONFIGURAÇÕES GLOBAIS INICIAIS E ÁUDIO CONTEXT ===
 let audioCtx = null;
-let simpleSynth = null; // Instância do SimpleSynth de synth72.js
+let simpleSynth = null; // Instância do SimpleSynth de synth73.js
 let _internalAudioEnabledMaster = false;
 let currentAudioSourceView = 'shapes'; // 'shapes' ou 'beatmatrix'
 
@@ -110,10 +110,10 @@ let currentTheme = 'theme-dark';
 const THEME_STORAGE_KEY = 'midiShapeThemeV35'; // Mantido
 const PRESETS_STORAGE_KEY = 'midiShapePresetsV52'; // Mantido
 let shapePresets = {};
-const APP_SETTINGS_KEY = 'midiShapeManipulatorV72Settings'; // ATUALIZADO para v72
+const APP_SETTINGS_KEY = 'midiShapeManipulatorV73Settings'; // ATUALIZADO para v73
 const ARPEGGIO_SETTINGS_KEY = 'arpeggioSettingsV52'; // Mantido
 const CAMERA_DEVICE_ID_KEY = 'midiShapeCameraDeviceIdV52'; // Mantido
-// V72: Beat Matrix settings key será gerenciado por beatmatrix72.js
+// V73: Beat Matrix settings key será gerenciado por beatmatrix73.js
 
 // DOM Elements (principais e de formas)
 const hudElement = document.getElementById('hud');
@@ -183,7 +183,7 @@ const playPauseButton = document.getElementById('playPauseButton'); // Play/Paus
 const internalAudioToggleButton = document.getElementById('internalAudioToggleButton');
 // ... (seletores para controles de áudio no modal de settings e sidebar do synth)
 
-// V72: Elementos da Beat Matrix são gerenciados em beatmatrix72.js, mas o botão de toggle principal é aqui
+// V73: Elementos da Beat Matrix são gerenciados em beatmatrix73.js, mas o botão de toggle principal é aqui
 const toggleBeatMatrixButton = document.getElementById('toggleBeatMatrixButton');
 const beatMatrixContainer = document.getElementById('beatMatrixContainer'); // Container principal da BM
 
@@ -299,17 +299,17 @@ async function initMidi() {
   try {
     if (navigator.requestMIDIAccess) {
       midiAccess = await navigator.requestMIDIAccess({ sysex: false });
-      logDebug("MIDI Access Granted (v72)");
+      logDebug("MIDI Access Granted (v73)");
       updateMidiDeviceLists();
       midiAccess.onstatechange = (e) => {
-        logDebug("MIDI state change (v72):", { port: e.port.name, type: e.port.type, state: e.port.state });
+        logDebug("MIDI state change (v73):", { port: e.port.name, type: e.port.type, state: e.port.state });
         updateMidiDeviceLists();
       };
     } else {
-      console.warn("Web MIDI API não suportada (v72).");
+      console.warn("Web MIDI API não suportada (v73).");
     }
   } catch (error) {
-    console.error("Não foi possível acessar MIDI (v72).", error);
+    console.error("Não foi possível acessar MIDI (v73).", error);
   }
 }
 
@@ -337,7 +337,8 @@ function updateMidiDeviceLists() {
 function populateMidiOutputSelect(selectElement, callbackOnSelect) {
   if (!selectElement) return;
   const prevId = selectElement.value; // Guardar o valor anterior do select específico
-  selectElement.innerHTML = '';
+  // Certifique-se de que o selectElement não é nulo antes de tentar limpar
+  if (selectElement) selectElement.innerHTML = '';
 
   if (availableMidiOutputs.size === 0) {
     selectElement.add(new Option("Nenhuma saída MIDI", "", true, true));
@@ -358,15 +359,18 @@ function populateMidiOutputSelect(selectElement, callbackOnSelect) {
 function populateMidiInputSelect() {
   if (!midiInputSelect) return;
   const prevId = midiInput ? midiInput.id : null;
-  midiInputSelect.innerHTML = '';
+  // Certifique-se de que o midiInputSelect não é nulo antes de tentar limpar
+  if (midiInputSelect) midiInputSelect.innerHTML = '';
+
   if (availableMidiInputs.size === 0) {
-    midiInputSelect.add(new Option("Nenhuma entrada MIDI", "", true, true));
+    if (midiInputSelect) midiInputSelect.add(new Option("Nenhuma entrada MIDI", "", true, true));
     setMidiInput(null);
     return;
   }
-  availableMidiInputs.forEach(inp => midiInputSelect.add(new Option(inp.name, inp.id)));
-  if (prevId && availableMidiInputs.has(prevId)) midiInputSelect.value = prevId;
-  setMidiInput(availableMidiInputs.get(midiInputSelect.value) || null);
+  if (midiInputSelect) availableMidiInputs.forEach(inp => midiInputSelect.add(new Option(inp.name, inp.id)));
+  if (prevId && availableMidiInputs.has(prevId) && midiInputSelect) midiInputSelect.value = prevId;
+
+  setMidiInput(availableMidiInputs.get(midiInputSelect ? midiInputSelect.value : null) || null);
 }
 
 function setMidiInput(inputPort) {
@@ -374,13 +378,13 @@ function setMidiInput(inputPort) {
   midiInput = inputPort;
   if (midiInput) {
     midiInput.onmidimessage = handleMidiMessage;
-    logDebug("MIDI Input definido (v72):", midiInput.name);
+    logDebug("MIDI Input definido (v73):", midiInput.name);
   }
 }
 
 function handleMidiMessage(event) { /* ... (mesma lógica da v71) ... */ }
 
-// V72: sendMidiNoteOn e sendMidiNoteOff agora precisam saber qual saída MIDI usar
+// V73: sendMidiNoteOn e sendMidiNoteOff agora precisam saber qual saída MIDI usar
 function sendMidiNoteOn(note, velocity, channel, shapeId = -1, source = 'shapes') {
   if (spectatorModeActive) return;
   const ch = Math.max(0, Math.min(15, channel));
@@ -391,12 +395,12 @@ function sendMidiNoteOn(note, velocity, channel, shapeId = -1, source = 'shapes'
   if (source === 'shapes' && midiOutput) {
     targetMidiOutput = midiOutput;
   } else if (source === 'beatmatrix') {
-    // Acessa a saída MIDI da Beat Matrix (definida em beatmatrix72.js)
+    // Acessa a saída MIDI da Beat Matrix (definida em beatmatrix73.js)
     if (typeof beatMatrix !== "undefined" && beatMatrix.midiOut) {
         targetMidiOutput = beatMatrix.midiOut;
     } else if (midiOutput) { // Fallback para MIDI global se matrix não tiver um específico
         targetMidiOutput = midiOutput;
-        logDebug("Beat Matrix sem MIDI out específico, usando global/formas.");
+        // logDebug("Beat Matrix sem MIDI out específico, usando global/formas."); // Pode ser muito verboso
     }
   }
 
@@ -477,13 +481,13 @@ function stopAllNotesForShape(shape, clearActiveMidiNotesObject = true) {
 
 function turnOffAllActiveNotes() {
   if (spectatorModeActive) return;
-  logDebug("Desligando todas as notas ativas (MIDI e Interno) - v72.");
+  logDebug("Desligando todas as notas ativas (MIDI e Interno) - v73.");
   const origMidiEnabled = midiEnabled;
   midiEnabled = true; // Temporariamente habilita para garantir o envio de note off
 
   shapes.forEach(shape => stopAllNotesForShape(shape, true));
 
-  // V72: Parar notas da Beat Matrix
+  // V73: Parar notas da Beat Matrix
   if (typeof beatMatrix !== "undefined" && typeof beatMatrix.turnOffAllNotes === "function") {
     beatMatrix.turnOffAllNotes(false); // false para não parar o áudio globalmente aqui, o simpleSynth.allNotesOff faz isso
   }
@@ -567,7 +571,7 @@ function togglePlayPauseShapes() {
     if (spectatorModeActive) return;
     // Se a Beat Matrix estiver visível e tocando, pare-a primeiro
     if (beatMatrixContainer.classList.contains('visible') && typeof beatMatrix !== "undefined" && beatMatrix.isPlaying) {
-        beatMatrix.togglePlayback(); // Assume que esta função existe em beatmatrix72.js
+        beatMatrix.togglePlayback(); // Assume que esta função existe em beatmatrix73.js
     }
     // Garante que a fonte de áudio seja 'shapes'
     if (currentAudioSourceView !== 'shapes') {
@@ -599,7 +603,7 @@ function togglePlayPauseShapes() {
 }
 
 
-// V72: Gerenciamento de visibilidade da Beat Matrix
+// V73: Gerenciamento de visibilidade da Beat Matrix
 function toggleBeatMatrixVisibility() {
     const isVisible = beatMatrixContainer.classList.toggle('visible');
     toggleBeatMatrixButton.classList.toggle('active', isVisible);
@@ -642,8 +646,8 @@ function saveAllPersistentSettings(){
   savePersistentSetting('beatMatrixVisible', beatMatrixContainer.classList.contains('visible'));
   savePersistentSetting('currentAudioSourceView', currentAudioSourceView);
   savePersistentSetting('globalBPM', globalBPM);
-  // Configurações específicas da Beat Matrix são salvas por beatmatrix72.js
-  logDebug("Configurações V72 salvas.");
+  // Configurações específicas da Beat Matrix são salvas por beatmatrix73.js
+  logDebug("Configurações V73 salvas.");
 }
 function loadAllPersistentSettings(){
   // ... (carrega configurações globais e das formas)
@@ -651,11 +655,11 @@ function loadAllPersistentSettings(){
   currentAudioSourceView = loadPersistentSetting('currentAudioSourceView', 'shapes');
   globalBPM = loadPersistentSetting('globalBPM', 120);
   // ... (restaura estado da UI baseado nas configs carregadas)
-  logDebug("Configurações V72 carregadas.");
+  logDebug("Configurações V73 carregadas.");
   return { /* ... (retorna o que for necessário para init) ... */ };
 }
 
-// V71/V72: Função para atualizar o BPM global e refletir nos componentes
+// V73: Função para atualizar o BPM global e refletir nos componentes
 function updateGlobalBPM(newBpm) {
     globalBPM = Math.max(30, Math.min(300, parseInt(newBpm, 10)));
     if (globalBpmSlider) globalBpmSlider.value = globalBPM;
@@ -707,14 +711,14 @@ function setupEventListeners() {
       if (audioCtx && audioCtx.state === 'suspended') {
         await audioCtx.resume();
       }
-      // V72: A inicialização do Tone.js pode ser removida se não estiver sendo usada diretamente.
+      // V73: A inicialização do Tone.js pode ser removida se não estiver sendo usada diretamente.
       // if (typeof Tone !== 'undefined' && Tone.context.state === 'suspended') {
       //   await Tone.start();
       // }
       _internalAudioEnabledMaster = !_internalAudioEnabledMaster;
       if (_internalAudioEnabledMaster) {
         if (!simpleSynth && audioCtx) {
-          simpleSynth = new SimpleSynth(audioCtx); // Instancia do synth72.js
+          simpleSynth = new SimpleSynth(audioCtx); // Instancia do synth73.js
           // Aplicar configurações salvas ao synth
            const { audioSettings } = loadAllPersistentSettings(); // Assume que esta função retorna as config de áudio
             if (simpleSynth && audioSettings) {
@@ -815,7 +819,7 @@ function animationLoop() {
 
 // --- Inicialização Principal ---
 window.addEventListener('DOMContentLoaded', () => {
-  logDebug("DOM Carregado. Iniciando main72.js...");
+  logDebug("DOM Carregado. Iniciando main73.js...");
   detectPlatform(); // Função da v71
   hasWebGL2 = true; // Assumindo suporte, ou adicionar checkWebGL2Support() da v71
 
@@ -826,7 +830,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadAllPersistentSettings(); // Carrega configurações globais e de formas
   applyTheme(currentTheme); // Função da v71
 
-  // V72: Inicializa a Beat Matrix (esta função deve estar em beatmatrix72.js e ser global ou exportada)
+  // V73: Inicializa a Beat Matrix (esta função deve estar em beatmatrix73.js e ser global ou exportada)
   if (typeof initializeBeatMatrix === "function") {
     initializeBeatMatrix({
         globalBPM: globalBPM,
@@ -904,9 +908,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
   updateHUD();
   // sendAllGlobalStatesOSC(); // Se necessário
-  if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v72).\n`;
+  if (oscLogTextarea) oscLogTextarea.value = `Log OSC - ${new Date().toLocaleTimeString()} - Configs Carregadas (v73).\n`;
 
-  logDebug("Iniciando loop de animação (v72) e finalizando DOMContentLoaded.");
+  logDebug("Iniciando loop de animação (v73) e finalizando DOMContentLoaded.");
   animationLoop();
 });
 
@@ -915,10 +919,10 @@ function detectPlatform() { /* ... */ }
 function applyTheme(theme) { /* ... */ }
 function loadTheme() { /* ... */ }
 
-// Placeholder para funções que podem ser movidas para beatmatrix72.js mas são chamadas aqui
+// Placeholder para funções que podem ser movidas para beatmatrix73.js mas são chamadas aqui
 // ou que precisam ser acessíveis globalmente por enquanto.
-// Se uma função como `initializeBeatMatrix` é definida em beatmatrix72.js,
-// ela precisa ser carregada antes de main72.js ou ser anexada ao window object.
+// Se uma função como `initializeBeatMatrix` é definida em beatmatrix73.js,
+// ela precisa ser carregada antes de main73.js ou ser anexada ao window object.
 
 // Funções de gravação de áudio (mantidas de v71)
 function startAudioRecording() { /* ... */ }
@@ -930,4 +934,4 @@ function updateAudioRecordingHUD(isRecording, isPaused, durationSeconds = 0, isS
 // Funções de mapeamento de gestos (se mantidas)
 // Funções de controle do painel do synth e arpejador (se mantidas)
 
-console.log("main72.js carregado.");
+console.log("main73.js carregado.");

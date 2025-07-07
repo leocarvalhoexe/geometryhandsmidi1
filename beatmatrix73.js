@@ -1,9 +1,9 @@
 // ==========================================================================
-// BEAT MATRIX MODULE v72 - beatmatrix72.js
+// BEAT MATRIX MODULE v73 - beatmatrix73.js
 // ==========================================================================
 // Este módulo gerencia a lógica e UI da Beat Matrix integrada.
 
-// Instância global para a Beat Matrix, acessível por main72.js
+// Instância global para a Beat Matrix, acessível por main73.js
 let beatMatrix = {
     // --- Estado Interno ---
     isInitialized: false,
@@ -19,9 +19,9 @@ let beatMatrix = {
     baseNote: 36, // Nota MIDI inicial para a grid
     timerId: null,
     midiOut: null, // Saída MIDI específica para a Beat Matrix
-    synth: null, // Referência à instância do SimpleSynth de main72.js
+    synth: null, // Referência à instância do SimpleSynth de main73.js
 
-    // Callbacks para interagir com main72.js
+    // Callbacks para interagir com main73.js
     getGlobalBPMCallback: null,
     sendMidiNoteOn: null,
     sendMidiNoteOff: null,
@@ -64,7 +64,7 @@ let beatMatrix = {
         if(config.loadPersistentSettingCallback) this.loadSetting = config.loadPersistentSettingCallback;
 
 
-        this.logDebug("Beat Matrix v72: Inicializando...");
+        this.logDebug("Beat Matrix v73: Inicializando...");
 
         // Obter referências aos elementos DOM
         this.containerElement = document.getElementById('beatMatrixContainer');
@@ -85,7 +85,7 @@ let beatMatrix = {
         this.clearButton = document.getElementById('bmClearButton');
 
         if (!this.gridElement || !this.playStopButton) {
-            this.logDebug("Beat Matrix v72: Erro - Elementos DOM essenciais não encontrados.");
+            this.logDebug("Beat Matrix v73: Erro - Elementos DOM essenciais não encontrados.");
             return;
         }
 
@@ -96,11 +96,11 @@ let beatMatrix = {
 
 
         this.isInitialized = true;
-        this.logDebug("Beat Matrix v72: Inicialização completa.");
+        this.logDebug("Beat Matrix v73: Inicialização completa.");
     },
 
     onShow: function(globalBPM, availableMidiOutputs, synthInstance) {
-        this.logDebug("Beat Matrix v72: onShow triggered.");
+        this.logDebug("Beat Matrix v73: onShow triggered.");
         this.synth = synthInstance; // Garante que temos a instância mais recente do synth
         this.updateGlobalBPMReference(globalBPM); // Atualiza BPM se estiver usando global
         this.populateMidiOutputs(availableMidiOutputs); // Atualiza lista de MIDI outputs
@@ -355,14 +355,17 @@ let beatMatrix = {
     restartSequencerTimer: function() {
         if (this.timerId) clearInterval(this.timerId);
         if (this.isPlaying && this.cols > 0) {
-            const interval = 60000 / this.currentBPM / (this.cols > 0 ? (this.cols / this.cols) : 1); // Ajuste para semínimas (4 steps por batida se cols for múltiplo de 4)
-            // Para um sequenciador de 16 passos onde cada passo é uma semicolcheia:
-            // Intervalo por passo = (60000 / BPM) / 4
-            const stepInterval = (60000 / this.currentBPM) / 4; // Assumindo 16ths
-            if (stepInterval > 0 && isFinite(stepInterval)) {
-                this.timerId = setInterval(() => this.step(), stepInterval);
+            // A intenção parece ser que cada coluna/step seja uma semicolcheia (16th note).
+            // O cálculo para o intervalo de uma semicolcheia é (60000 / BPM) / 4.
+            // A variável 'interval' anterior não estava sendo usada e sua lógica era confusa.
+            const stepIntervalMilliseconds = (60000 / this.currentBPM) / 4;
+
+            this.logDebug(`Beat Matrix: Recalculando timer. BPM: ${this.currentBPM}, Cols: ${this.cols}, Intervalo por Step (16th): ${stepIntervalMilliseconds.toFixed(2)}ms`);
+
+            if (stepIntervalMilliseconds > 0 && isFinite(stepIntervalMilliseconds)) {
+                this.timerId = setInterval(() => this.step(), stepIntervalMilliseconds);
             } else {
-                this.logDebug("Beat Matrix: Intervalo de passo inválido. Playback não iniciado/continuado.");
+                this.logDebug(`Beat Matrix: Intervalo de passo inválido (${stepIntervalMilliseconds}). Playback não iniciado/continuado.`);
                 if (this.isPlaying) this.togglePlayback(); // Para o playback se o intervalo for ruim
             }
         }
@@ -439,31 +442,31 @@ let beatMatrix = {
     }
 };
 
-// Função global para main72.js poder inicializar a Beat Matrix
-// Esta função deve ser chamada após o DOM estar carregado e main72.js ter suas referências.
+// Função global para main73.js poder inicializar a Beat Matrix
+// Esta função deve ser chamada após o DOM estar carregado e main73.js ter suas referências.
 function initializeBeatMatrix(config) {
     if (beatMatrix && !beatMatrix.isInitialized) {
         beatMatrix.initialize(config);
     }
 }
 
-// Função para main72.js informar qual é a instância do synth
+// Função para main73.js informar qual é a instância do synth
 function setBeatMatrixSynth(synthInstance) {
     if (beatMatrix) {
         beatMatrix.synth = synthInstance;
     }
 }
 
-// Função para main72.js popular as saídas MIDI da Beat Matrix
+// Função para main73.js popular as saídas MIDI da Beat Matrix
 function populateBeatMatrixMidiOutputSelect(availableMidiOutputs) {
     if (beatMatrix && beatMatrix.isInitialized) {
         beatMatrix.populateMidiOutputs(availableMidiOutputs);
     } else if (beatMatrix && document.getElementById('bmMidiOutputSelect')) {
         // Se não totalmente inicializado, mas o select existe, tenta popular.
-        // Isso pode acontecer se main72 carregar as saídas MIDI antes da BM estar totalmente pronta.
+        // Isso pode acontecer se main73 carregar as saídas MIDI antes da BM estar totalmente pronta.
         const select = document.getElementById('bmMidiOutputSelect');
         const currentVal = select.value;
-        select.innerHTML = '';
+        if (select) select.innerHTML = ''; // Adicionado if para segurança
          if (availableMidiOutputs.size === 0) {
             select.add(new Option("Nenhuma saída MIDI", ""));
         } else {
@@ -485,4 +488,4 @@ function populateBeatMatrixMidiOutputSelect(availableMidiOutputs) {
 }
 
 
-console.log("beatmatrix72.js carregado.");
+console.log("beatmatrix73.js carregado.");

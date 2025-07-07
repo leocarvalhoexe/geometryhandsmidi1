@@ -1,13 +1,13 @@
 // ==========================================================================
-// SYNTHESIZER MODULE v72 - synth72.js
+// SYNTHESIZER MODULE v73 - synth73.js
 // ==========================================================================
 
-// audioCtx e _internalAudioEnabledMaster são gerenciados em main72.js
-// simpleSynth (a instância) também é gerenciada em main72.js
+// audioCtx e _internalAudioEnabledMaster são gerenciados em main73.js
+// simpleSynth (a instância) também é gerenciada em main73.js
 
-const VALID_WAVEFORMS_V72 = ['sine', 'square', 'sawtooth', 'triangle', 'noise', 'pulse'];
+const VALID_WAVEFORMS_V73 = ['sine', 'square', 'sawtooth', 'triangle', 'noise', 'pulse'];
 
-function midiToFrequencyV72(midiNote) {
+function midiToFrequencyV73(midiNote) {
   if (midiNote < 0 || midiNote > 127) return 0;
   return 440 * Math.pow(2, (midiNote - 69) / 12);
 }
@@ -91,27 +91,44 @@ class SimpleSynth {
     this.reverbDryGain = this.audioCtx.createGain();
 
     // Roteamento do Reverb (após o Delay):
-    // delayDryGain -> reverbDryGain -> masterGain
-    // delayWetGain -> reverbDryGain (se o reverb estiver antes do delay na cadeia, o que não é o caso aqui)
-    // OU, para reverb em paralelo ao delay (mais comum):
-    // filterNode -> reverbDryGain (se reverb fosse o primeiro efeito após o filtro)
-    // filterNode -> convolverNode -> reverbWetGain
-    // Neste caso, o delay já tem dry/wet, então vamos passar ambos para o reverb
-    this.delayDryGain.connect(this.reverbDryGain); // Sinal seco do delay vai para o seco do reverb
-    this.delayWetGain.connect(this.reverbDryGain); // Sinal molhado do delay também vai para o seco do reverb (para que o reverb processe ambos)
+    // O sinal do filterNode (que já passou por distortion) se divide:
+    // 1. Vai para o delay (que tem seu próprio dry/wet mix)
+    // 2. Vai para o convolver (para o reverb)
+    // Os sinais dry e wet do delay então se juntam e vão para o masterGain.
+    // O sinal wet do reverb (saída do convolver) também vai para o masterGain.
+    // Isso permite reverb e delay em paralelo após o filtro/distorção.
 
-    this.delayDryGain.connect(this.convolverNode); // E ambos também vão para o processamento do reverb
-    this.delayWetGain.connect(this.convolverNode);
+    // Conexão do filtro para o Delay
+    this.filterNode.connect(this.delayDryGain); // Sinal do filtro para o dry do delay
+    this.filterNode.connect(this.delayNode);    // Sinal do filtro para o processamento do delay
 
-    this.reverbDryGain.connect(this.masterGainNode); // Sinal não processado pelo reverb (já processado ou não pelo delay)
-    this.convolverNode.connect(this.reverbWetGain);  // Sinal processado pelo reverb
-    this.reverbWetGain.connect(this.masterGainNode);
+    this.delayNode.connect(this.delayFeedbackGain);
+    this.delayFeedbackGain.connect(this.delayNode); // Feedback loop do delay
+    this.delayNode.connect(this.delayWetGain);      // Saída processada do delay
+
+    // Conexão do filtro para o Reverb (em paralelo ao Delay)
+    this.filterNode.connect(this.reverbDryGain); // Sinal do filtro para o dry do reverb (bypass)
+    this.filterNode.connect(this.convolverNode); // Sinal do filtro para o processamento do reverb
+
+    // Saídas do Delay e Reverb para o Master Gain
+    this.delayDryGain.connect(this.masterGainNode); // Dry do Delay para Master
+    this.delayWetGain.connect(this.masterGainNode); // Wet do Delay para Master
+
+    this.reverbDryGain.connect(this.masterGainNode); // Dry do Reverb para Master (essencialmente bypassa o reverb)
+    this.reverbWetGain.connect(this.masterGainNode); // Wet do Reverb para Master
+
+    // Ajustar os ganhos de dry/wet para que não dupliquem o sinal
+    // O mix do reverb e do delay controlam a quantidade de sinal processado vs não processado
+    // que chega ao master.
+    // Se reverbDryGain está conectado ao master, ele passa o sinal que bypassou o convolver.
+    // Se delayDryGain está conectado ao master, ele passa o sinal que bypassou o delayNode.
 
     this._generateSimpleImpulseResponse().then(buffer => {
       if (this.convolverNode) this.convolverNode.buffer = buffer;
-    }).catch(e => console.error("Erro ao gerar IR para reverb (v72):", e));
+    }).catch(e => console.error("Erro ao gerar IR para reverb (v73):", e));
 
-    this.setReverbMix(0); // Mix padrão (totalmente seco)
+    this.setDelayMix(0); // Mix padrão (totalmente seco para delay)
+    this.setReverbMix(0); // Mix padrão (totalmente seco para reverb)
 
     // Buffer para waveform 'noise'
     this.noiseBuffer = null;
@@ -119,12 +136,12 @@ class SimpleSynth {
         this._createNoiseBuffer();
     }
 
-    console.log("SimpleSynth v72 inicializado.");
+    console.log("SimpleSynth v73 inicializado.");
   }
 
   _createNoiseBuffer() {
     if (!this.audioCtx) {
-        console.warn("AudioContext não disponível para criar noise buffer (v72).");
+        console.warn("AudioContext não disponível para criar noise buffer (v73).");
         return;
     }
     const bufferSize = this.audioCtx.sampleRate * 2; // 2 segundos de ruído
@@ -171,7 +188,7 @@ class SimpleSynth {
 
   // --- Setters para Parâmetros do Synth ---
   setWaveform(newWaveform) {
-    if (VALID_WAVEFORMS_V72.includes(newWaveform)) {
+    if (VALID_WAVEFORMS_V73.includes(newWaveform)) {
         this.waveform = newWaveform;
     } else {
         console.warn(`Invalid waveform: ${newWaveform}. Not changed.`);
@@ -256,20 +273,20 @@ class SimpleSynth {
   // --- Controle de Notas ---
   noteOn(midiNote, velocity = 127) {
     if (!this.audioCtx || this.audioCtx.state === 'closed') {
-        console.warn("SimpleSynth.noteOn (v72): audioCtx não disponível ou fechado.");
+        console.warn("SimpleSynth.noteOn (v73): audioCtx não disponível ou fechado.");
         return;
     }
     if (this.audioCtx.state === 'suspended') {
       // Idealmente, main.js deve garantir que o audioCtx está 'running' antes de chamar noteOn.
-      console.warn("SimpleSynth.noteOn (v72): AudioContext ainda suspenso. O som pode não tocar.");
+      console.warn("SimpleSynth.noteOn (v73): AudioContext ainda suspenso. O som pode não tocar.");
     }
     this._playNote(midiNote, velocity);
   }
 
   _playNote(midiNote, velocity) {
-    const freq = midiToFrequencyV72(midiNote);
+    const freq = midiToFrequencyV73(midiNote);
     if (freq <= 0 && this.waveform !== 'noise') {
-        console.warn(`Frequência inválida (${freq}Hz) para MIDI note ${midiNote} com waveform ${this.waveform}. Nota não será tocada (v72).`);
+        console.warn(`Frequência inválida (${freq}Hz) para MIDI note ${midiNote} com waveform ${this.waveform}. Nota não será tocada (v73).`);
         return;
     }
 
@@ -283,7 +300,7 @@ class SimpleSynth {
             if (this.lfoGainPitch && oldOscData.osc && oldOscData.osc.frequency && this.waveform !== 'noise') {
                  this.lfoGainPitch.disconnect(oldOscData.osc.frequency); // Tenta desconectar
             }
-        } catch (e) { console.warn("Erro ao limpar oscilador/gain anterior em _playNote (v72):", e); }
+        } catch (e) { console.warn("Erro ao limpar oscilador/gain anterior em _playNote (v73):", e); }
         delete this.oscillators[midiNote];
     }
 
@@ -293,7 +310,7 @@ class SimpleSynth {
 
     if (this.waveform === 'noise') {
         if (!this.noiseBuffer) this._createNoiseBuffer(); // Garante que o buffer exista
-        if (!this.noiseBuffer) { console.error("Buffer de ruído não pôde ser criado. Impossível tocar nota de ruído (v72)."); return; }
+        if (!this.noiseBuffer) { console.error("Buffer de ruído não pôde ser criado. Impossível tocar nota de ruído (v73)."); return; }
         osc = this.audioCtx.createBufferSource();
         osc.buffer = this.noiseBuffer;
         osc.loop = true; // Ruído contínuo, controlado pelo gain envelope
@@ -308,7 +325,7 @@ class SimpleSynth {
             const periodicWave = this.audioCtx.createPeriodicWave(realCoeffs, imagCoeffs, { disableNormalization: true });
             osc.setPeriodicWave(periodicWave);
         } catch (e) {
-            console.warn("Falha ao criar PeriodicWave para 'pulse', usando 'square' como fallback (v72).", e);
+            console.warn("Falha ao criar PeriodicWave para 'pulse', usando 'square' como fallback (v73).", e);
             osc.type = 'square'; // Fallback
         }
         osc.frequency.setValueAtTime(freq, now);
@@ -341,7 +358,7 @@ class SimpleSynth {
 
   noteOff(midiNote) {
     if (!this.audioCtx || this.audioCtx.state === 'closed') {
-        console.warn("SimpleSynth.noteOff (v72): audioCtx não disponível ou fechado.");
+        console.warn("SimpleSynth.noteOff (v73): audioCtx não disponível ou fechado.");
         return;
     }
 
@@ -353,7 +370,7 @@ class SimpleSynth {
           // Desconectar LFO do oscilador desta nota
           if (this.lfoGainPitch && osc && osc.frequency && type !== 'noise') {
               try { this.lfoGainPitch.disconnect(osc.frequency); }
-              catch (e) { console.warn("LFO já desconectado do osc.frequency ou erro em noteOff (v72).", e); }
+              catch (e) { console.warn("LFO já desconectado do osc.frequency ou erro em noteOff (v73).", e); }
           }
 
           // Aplica o Release do envelope
@@ -363,7 +380,7 @@ class SimpleSynth {
 
           // Para o oscilador após o release
           try { osc.stop(now + this.releaseTime + 0.01); } // Adiciona uma pequena margem
-          catch (e) { console.warn("Erro ao parar oscilador (pode já ter sido parado) em noteOff (v72):", e); }
+          catch (e) { console.warn("Erro ao parar oscilador (pode já ter sido parado) em noteOff (v73):", e); }
 
           // Limpa a referência após o release para permitir que os objetos sejam coletados pelo GC
           // e para evitar que o oscilador seja reutilizado ou modificado incorretamente.
@@ -373,7 +390,7 @@ class SimpleSynth {
             if (this.oscillators[midiNote] && this.oscillators[midiNote].osc === osc) {
                 if (gainNode && gainNode.numberOfOutputs > 0) {
                     try { gainNode.disconnect(); } // Desconecta o gainNode da cadeia de efeitos
-                    catch (e) { console.warn("Erro ao desconectar gainNode (pode já estar desconectado) em noteOff (v72).", e); }
+                    catch (e) { console.warn("Erro ao desconectar gainNode (pode já estar desconectado) em noteOff (v73).", e); }
                 }
                 delete this.oscillators[midiNote]; // Remove a referência
             }
@@ -387,7 +404,7 @@ class SimpleSynth {
   }
 
   allNotesOff() {
-    console.log("SimpleSynth v72 All Notes Off (ADSR aware)");
+    console.log("SimpleSynth v73 All Notes Off (ADSR aware)");
     const now = this.audioCtx.currentTime;
     for (const midiNote in this.oscillators) {
       if (this.oscillators.hasOwnProperty(midiNote)) {
@@ -396,7 +413,7 @@ class SimpleSynth {
             // Desconectar LFO
             if (this.lfoGainPitch && osc && osc.frequency && type !== 'noise') {
               try { this.lfoGainPitch.disconnect(osc.frequency); }
-              catch (e) { console.warn("LFO já desconectado em allNotesOff (v72).", e); }
+              catch (e) { console.warn("LFO já desconectado em allNotesOff (v73).", e); }
             }
             // Release rápido para todas as notas
             gainNode.gain.cancelScheduledValues(now);
@@ -405,7 +422,7 @@ class SimpleSynth {
             gainNode.gain.linearRampToValueAtTime(0, now + quickRelease);
 
             try { osc.stop(now + quickRelease + 0.01); }
-            catch(e) { console.warn("Erro ao parar osc (allNotesOff v72)", e); }
+            catch(e) { console.warn("Erro ao parar osc (allNotesOff v73)", e); }
 
             // Agendar limpeza das referências
             const currentOscRef = osc; const currentGainNodeRef = gainNode; const currentMidiNoteKey = midiNote;
@@ -426,4 +443,4 @@ class SimpleSynth {
   }
 }
 
-console.log("synth72.js carregado e pronto para ser instanciado por main72.js.");
+console.log("synth73.js carregado e pronto para ser instanciado por main73.js.");
