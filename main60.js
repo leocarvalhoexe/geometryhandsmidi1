@@ -790,9 +790,94 @@ function handleKeyPress(e) { /* ... (conteúdo original de main59.js, mas 'V' ag
 function savePersistentSetting(key,value){ /* ... (conteúdo original de main59.js) ... */ }
 function loadPersistentSetting(key,defaultValue){ /* ... (conteúdo original de main59.js) ... */ }
 function saveAllPersistentSettings(){ /* ... (conteúdo original de main59.js) ... */ }
-function loadAllPersistentSettings(){ /* ... (conteúdo original de main59.js) ... */ }
-function saveArpeggioSettings(){ /* ... (conteúdo original de main59.js) ... */ }
-function loadArpeggioSettings(){ /* ... (conteúdo original de main59.js) ... */ }
+
+function loadAllPersistentSettings(){
+  operationMode = loadPersistentSetting('operationMode','two_persons');
+  midiEnabled = loadPersistentSetting('midiEnabled',true);
+  internalAudioEnabled = loadPersistentSetting('internalAudioEnabled', true); // Flag da UI
+
+  const savedWaveform = loadPersistentSetting('audioWaveform', 'sine');
+  const savedMasterVolume = loadPersistentSetting('audioMasterVolume', 0.5);
+  const savedAttack = loadPersistentSetting('audioAttack', 0.01);
+  const savedDecay = loadPersistentSetting('audioDecay', 0.1);
+  const savedSustain = loadPersistentSetting('audioSustain', 0.7);
+  const savedRelease = loadPersistentSetting('audioRelease', 0.2);
+  const savedDistortion = loadPersistentSetting('audioDistortion', 0);
+  const savedFilterCutoff = loadPersistentSetting('audioFilterCutoff', 20000);
+  const savedFilterResonance = loadPersistentSetting('audioFilterResonance', 1);
+  const savedLfoWaveform = loadPersistentSetting('lfoWaveform', 'sine');
+  const savedLfoRate = loadPersistentSetting('lfoRate', 5);
+  const savedLfoPitchDepth = loadPersistentSetting('lfoPitchDepth', 0);
+  const savedLfoFilterDepth = loadPersistentSetting('lfoFilterDepth', 0);
+  const savedDelayTime = loadPersistentSetting('delayTime', 0.5);
+  const savedDelayFeedback = loadPersistentSetting('delayFeedback', 0.3);
+  const savedDelayMix = loadPersistentSetting('delayMix', 0);
+  const savedReverbMix = loadPersistentSetting('reverbMix', 0);
+
+  dmxSyncModeActive = loadPersistentSetting('dmxSyncModeActive',false);
+  midiFeedbackEnabled = loadPersistentSetting('midiFeedbackEnabled',false);
+  spectatorModeActive = false;
+  currentTheme = loadPersistentSetting('currentTheme','theme-dark');
+  oscLoopDuration = loadPersistentSetting('oscLoopDuration',5000);
+
+  if (internalAudioToggleButton) {
+      internalAudioToggleButton.textContent = internalAudioEnabled ? "🔊 Áudio ON" : "🔊 Áudio OFF";
+      internalAudioToggleButton.classList.toggle('active', internalAudioEnabled);
+  }
+
+  loadOscSettings();
+  loadArpeggioSettings();
+
+  console.log("Configs V55 (ou compatível) carregadas do localStorage para main60.js.");
+  // Garante que o objeto retornado sempre tenha a estrutura esperada
+  return {
+    savedMidiOutputId: loadPersistentSetting('midiOutputId', null),
+    savedMidiInputId: loadPersistentSetting('midiInputId', null),
+    audioSettings: {
+        waveform: savedWaveform || 'sine',
+        masterVolume: savedMasterVolume !== undefined ? savedMasterVolume : 0.5,
+        attack: savedAttack !== undefined ? savedAttack : 0.01,
+        decay: savedDecay !== undefined ? savedDecay : 0.1,
+        sustain: savedSustain !== undefined ? savedSustain : 0.7,
+        release: savedRelease !== undefined ? savedRelease : 0.2,
+        distortion: savedDistortion !== undefined ? savedDistortion : 0,
+        filterCutoff: savedFilterCutoff !== undefined ? savedFilterCutoff : 20000,
+        filterResonance: savedFilterResonance !== undefined ? savedFilterResonance : 1,
+        lfoWaveform: savedLfoWaveform || 'sine',
+        lfoRate: savedLfoRate !== undefined ? savedLfoRate : 5,
+        lfoPitchDepth: savedLfoPitchDepth !== undefined ? savedLfoPitchDepth : 0,
+        lfoFilterDepth: savedLfoFilterDepth !== undefined ? savedLfoFilterDepth : 0,
+        delayTime: savedDelayTime !== undefined ? savedDelayTime : 0.5,
+        delayFeedback: savedDelayFeedback !== undefined ? savedDelayFeedback : 0.3,
+        delayMix: savedDelayMix !== undefined ? savedDelayMix : 0,
+        reverbMix: savedReverbMix !== undefined ? savedReverbMix : 0
+    }
+  };
+}
+
+function saveArpeggioSettings(){const s={currentArpeggioStyle,arpeggioBPM,noteInterval,externalBPM};try{localStorage.setItem(ARPEGGIO_SETTINGS_KEY,JSON.stringify(s));}catch(e){console.error("Erro ao salvar config de arpejo:", e);}}
+function loadArpeggioSettings(){
+    try{
+        const s=JSON.parse(localStorage.getItem(ARPEGGIO_SETTINGS_KEY));
+        if(s){
+            currentArpeggioStyle = s.currentArpeggioStyle || "UP";
+            arpeggioBPM = parseInt(s.arpeggioBPM, 10) || 120;
+            noteInterval = parseInt(s.noteInterval, 10) || (60000 / arpeggioBPM); // Adicionado fallback para noteInterval
+        } else { // Valores padrão se não houver nada salvo
+            currentArpeggioStyle = "UP";
+            arpeggioBPM = 120;
+            noteInterval = 60000 / arpeggioBPM;
+        }
+    }catch(e){ // Valores padrão em caso de erro de parse
+        currentArpeggioStyle = "UP";
+        arpeggioBPM = 120;
+        noteInterval = 60000 / arpeggioBPM;
+        console.error("Erro ao carregar configs de arpejo:", e);
+    }
+    if(arpeggioStyleSelect) arpeggioStyleSelect.value = currentArpeggioStyle;
+    updateBPMValues(arpeggioBPM); // Garante que os sliders e displays sejam atualizados
+}
+
 function updateBPMValues(newBPM) { /* ... (conteúdo original de main59.js) ... */ }
 function updateNoteIntervalValues(newInterval) { /* ... (conteúdo original de main59.js) ... */ }
 function populateArpeggioStyleSelect(){ /* ... (conteúdo original de main59.js) ... */ }

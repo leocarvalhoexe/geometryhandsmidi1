@@ -1,6 +1,20 @@
 // ==========================================================================
-// SYNTHESIZER MODULE v59 - synth59.js
+// SYNTHESIZER MODULE v60 - synth60.js
 // ==========================================================================
+
+// Definição básica de logDebug para uso interno do synth60.js
+// Evita dependência do logDebug de main60.js que pode não estar definido quando este script é parseado.
+const DEBUG_SYNTH = false; // Controle de debug específico para o synth
+function logDebug(message, data = null) {
+  if (DEBUG_SYNTH) {
+    const timestamp = new Date().toLocaleTimeString();
+    if (data !== null) {
+      console.log(`[SYNTH DEBUG ${timestamp}] ${message}`, data);
+    } else {
+      console.log(`[SYNTH DEBUG ${timestamp}] ${message}`);
+    }
+  }
+}
 
 let audioCtx = null;
 let simpleSynth = null;
